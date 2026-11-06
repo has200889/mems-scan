@@ -1,0 +1,1598 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>MEMS 스캔 패턴 시뮬레이터</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+</head>
+<body>
+<style>
+/* Layout: instrument console — a fixed control rail on the left, measurement readouts and plots on the right; stacks to one column on phones */
+:root {
+  --bg: #eceff3;
+  --panel: #ffffff;
+  --ink: #16202c;
+  --muted: #5a6677;
+  --line: #d3dae3;
+  --accent: #1d55b5;
+  --accent-soft: #e3ebf9;
+  --plot: #ffffff;
+  --grid: #e7ebf1;
+  --warn: #9a4a07;
+  --warn-bg: #fbeedd;
+  --err: #a8231a;
+  --err-bg: #fbe6e4;
+  --ok: #1c6e45;
+  --ok-bg: #e2f2e9;
+  --src1: #2c6fd8;
+  --src2: #df7a17;
+  --src3: #219357;
+  --normal: #d42a2a;
+  --f-ui: "IBM Plex Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Consolas, "Courier New", monospace;
+  --r: 8px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e131a; --panel: #161d27; --ink: #e5eaf1; --muted: #98a4b5; --line: #2a3443;
+    --accent: #7ea6f2; --accent-soft: #1d2a40; --plot: #0b1016; --grid: #1b2430;
+    --warn: #f0b066; --warn-bg: #3a2714; --err: #f2948c; --err-bg: #3d1a17; --ok: #7fd3a5; --ok-bg: #13301f;
+    --src1: #5b93ee; --src2: #f0973e; --src3: #46b878; --normal: #ff5a5a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e131a; --panel: #161d27; --ink: #e5eaf1; --muted: #98a4b5; --line: #2a3443;
+  --accent: #7ea6f2; --accent-soft: #1d2a40; --plot: #0b1016; --grid: #1b2430;
+  --warn: #f0b066; --warn-bg: #3a2714; --err: #f2948c; --err-bg: #3d1a17; --ok: #7fd3a5; --ok-bg: #13301f;
+  --src1: #5b93ee; --src2: #f0973e; --src3: #46b878; --normal: #ff5a5a;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--f-ui); font-size: 14px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 32px;
+}
+.app { max-width: 1440px; margin: 0 auto; display: grid; gap: 16px; }
+header.top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 24px; }
+h1 { font-size: 22px; font-weight: 600; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+.lede { margin: 2px 0 0; color: var(--muted); max-width: 70ch; }
+.badge { font-family: var(--f-mono); font-size: 12px; color: var(--ok); background: var(--ok-bg); padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+
+.layout { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } .layout > .main { order: -1; } }
+
+.rail { display: grid; gap: 12px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 14px 16px; min-width: 0; }
+.card h2 { font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: 0.06em; margin: 0 0 10px; }
+.card h2 .hint { font-weight: 400; letter-spacing: 0; margin-left: 6px; }
+
+.ctl { display: grid; gap: 2px; padding: 5px 0; }
+.ctl + .ctl { border-top: 1px dashed var(--grid); }
+.ctl label { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.ctl label .sym { font-family: var(--f-mono); color: var(--muted); font-size: 12px; }
+.ctl-in { display: grid; grid-template-columns: minmax(0, 1fr) 84px 30px; gap: 8px; align-items: center; }
+.ctl-in .unit { font-family: var(--f-mono); color: var(--muted); font-size: 12px; }
+input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; min-width: 0; }
+input[type="number"], select {
+  width: 100%; font-family: var(--f-mono); font-size: 13px; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; font-variant-numeric: tabular-nums;
+}
+input[type="number"].bad { border-color: var(--err); background: var(--err-bg); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { text-align: center; padding: 6px 4px; font-size: 12.5px; cursor: pointer; color: var(--muted); background: var(--panel); }
+.seg label + input + label, .seg input + label ~ label { border-left: 1px solid var(--line); }
+.seg input:checked + label { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.seg input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: -2px; }
+.note { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
+
+.btn {
+  font: inherit; font-size: 13px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  padding: 6px 12px; border-radius: 6px; cursor: pointer;
+}
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.primary { background: var(--accent); color: var(--panel); border-color: var(--accent); }
+.btn.primary:hover { filter: brightness(1.08); color: var(--panel); }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.plotctl { gap: 12px; }
+.check { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink); cursor: pointer; white-space: nowrap; }
+.check input { accent-color: var(--accent); width: 15px; height: 15px; margin: 0; }
+
+.calc {
+  margin-top: 6px; padding: 5px 9px; border-radius: 6px; background: var(--accent-soft); color: var(--accent);
+  font-family: var(--f-mono); font-size: 12px; font-variant-numeric: tabular-nums; line-height: 1.45;
+}
+.calc b { font-weight: 600; }
+.calc.warn { background: var(--warn-bg); color: var(--warn); }
+.calc.err { background: var(--err-bg); color: var(--err); }
+.btn:disabled { opacity: .6; cursor: progress; }
+.geo { margin: 10px 0 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 10px; font-size: 12.5px; }
+.geo dt { color: var(--muted); }
+.geo dd { margin: 0; font-family: var(--f-mono); font-size: 12px; overflow-wrap: anywhere; }
+.msg { font-size: 12.5px; margin: 8px 0 0; padding: 6px 9px; border-radius: 6px; }
+.msg.err { color: var(--err); background: var(--err-bg); }
+.msg.ok { color: var(--ok); background: var(--ok-bg); }
+
+.main { display: grid; gap: 12px; min-width: 0; }
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 560px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 9px 12px; min-width: 0; }
+.stat .k { font-size: 12px; color: var(--muted); }
+.stat .v { font-family: var(--f-mono); font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.stat .s { font-size: 11.5px; color: var(--muted); font-family: var(--f-mono); }
+
+.ovcard { padding: 12px 12px 12px; }
+.ovhead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 12px; margin-bottom: 8px; }
+.ovhead h2 { margin: 0; }
+.ovshape { font-size: 12px; color: var(--muted); }
+.ovshape .pill { margin-left: 0; margin-right: 6px; vertical-align: 1px; }
+.ovgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+.ovtile {
+  display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 10px; row-gap: 2px; align-items: baseline;
+  text-align: left; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: var(--r);
+  padding: 9px 12px; cursor: pointer; min-width: 0; transition: border-color .15s, background .15s;
+}
+.ovtile:hover { border-color: var(--accent); }
+.ovtile[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+.ovtile .nm { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; white-space: nowrap; }
+.ovtile .nm i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.ovtile .cnt { justify-self: end; font-family: var(--f-mono); font-size: 22px; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.ovtile .cnt small { font-family: var(--f-ui); font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 2px; }
+.ovtile .sub { grid-column: 1 / -1; font-family: var(--f-mono); font-size: 11.5px; color: var(--muted); }
+.ovgrid.busy .ovtile .cnt { opacity: .45; }
+.pill { display: inline-block; font-size: 11px; font-family: var(--f-ui); padding: 1px 7px; border-radius: 999px; margin-left: 4px; vertical-align: 2px; }
+.pill.warn { color: var(--warn); background: var(--warn-bg); }
+.pill.err { color: var(--err); background: var(--err-bg); }
+.pill.ok { color: var(--ok); background: var(--ok-bg); }
+
+.plotcard { padding: 12px; }
+.plothead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+.plothead h2 { margin: 0; }
+.readout { font-family: var(--f-mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; min-height: 1.5em; }
+canvas { display: block; width: 100%; border-radius: 6px; background: var(--plot); touch-action: none; }
+#plot { cursor: crosshair; }
+#view3 { cursor: grab; }
+#view3:active { cursor: grabbing; }
+.legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-top: 8px; font-size: 12px; color: var(--muted); font-family: var(--f-mono); }
+.ramp { width: 180px; max-width: 40vw; height: 10px; border-radius: 3px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; }
+.chip i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+.timebar { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 12px; align-items: center; }
+.timebar .readout { grid-column: 1 / -1; }
+.cols { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+@media (max-width: 1150px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+
+details.model { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 14px; }
+details.model summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+details.model p, details.model li { color: var(--muted); font-size: 13px; max-width: 80ch; }
+details.model code, .mono { font-family: var(--f-mono); font-size: 12.5px; color: var(--ink); }
+textarea#fallback { width: 100%; height: 120px; font-family: var(--f-mono); font-size: 11px; margin-top: 8px; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="app">
+  <header class="top">
+    <div>
+      <h1>MEMS 스캔 패턴 시뮬레이터</h1>
+      <p class="lede">2축 MEMS 미러에서 반사된 광원 3개(LD1~LD3)가 수광면 어디에 찍히는지 시간에 따라 계산합니다. COMSOL Ray Optics 해석과 같은 결과를 반사 공식으로 바로 구합니다. 모델은 3rd_MU 형상으로 고정하고, 광원 배치 각도는 바꿀 수 있습니다.</p>
+    </div>
+    <span class="badge" title="3rd_MU 원래 배치(θ13 = 57.78°, α = 30.06°)에서 비교한 값">3rd_MU 배치에서 COMSOL 결과와 평균 오차 0.47 px</span>
+  </header>
+
+  <div class="layout">
+    <aside class="rail">
+      <section class="card" aria-labelledby="h-drive">
+        <h2 id="h-drive">구동 조건 <span class="hint">θ(t) = A·sin(2πft + φ)</span></h2>
+        <div id="grp-drive"></div>
+      </section>
+      <section class="card" aria-labelledby="h-range">
+        <h2 id="h-range">계산 범위</h2>
+        <div id="grp-range"></div>
+      </section>
+      <section class="card" aria-labelledby="h-mode">
+        <h2 id="h-mode">회전축 정의</h2>
+        <div class="seg" role="radiogroup" aria-labelledby="h-mode">
+          <input type="radio" name="mode" id="mode-global" value="global" checked><label for="mode-global">전역 XY</label>
+          <input type="radio" name="mode" id="mode-gimbal_xy" value="gimbal_xy"><label for="mode-gimbal_xy">짐벌 X 바깥</label>
+          <input type="radio" name="mode" id="mode-gimbal_yx" value="gimbal_yx"><label for="mode-gimbal_yx">짐벌 Y 바깥</label>
+        </div>
+        <p class="note">전역 XY는 COMSOL 결과와 같은 정의(전역 x축, y축 기준 회전)입니다. 짐벌은 미러 면 위의 축으로 회전시킵니다.</p>
+      </section>
+      <section class="card" aria-labelledby="h-layout">
+        <h2 id="h-layout">광원 배치 <span class="hint">미러 중심 구 위 · R = 65.18 mm</span></h2>
+        <div id="grp-layout"></div>
+        <div id="layoutmsg"></div>
+        <dl class="geo" id="geo"></dl>
+        <div class="row" style="margin-top:10px"><button class="btn" id="layout-reset" type="button">기본 배치로 (θ2 50° · θ13 52° · α 30°)</button></div>
+        <p class="note">θ는 z축(수직)에서 기운 각도, α는 미러 중심에서 본 두 광원 사이 각도입니다. 빔은 모두 미러 중심을 향하고, LD2는 +y 쪽, LD1은 +x 쪽, LD3는 −x 쪽에 놓입니다.</p>
+      </section>
+      <section class="card" aria-labelledby="h-exp">
+        <h2 id="h-exp">결과 내보내기</h2>
+        <div class="row">
+          <button class="btn primary" type="button" id="res-xlsx">결과 엑셀 저장 (.xlsx)</button>
+        </div>
+        <p class="note" style="margin-top:6px">'결과' 시트에 펄스마다 번호, t, θx, θy, LD1~LD3의 x·y 좌표, 빔 반사율을 저장하고, '조건·요약' 시트에 입력값·gcd·광원 배치·결과 요약을 저장합니다.</p>
+        <div class="row" style="margin-top:10px">
+          <button class="btn" type="button" id="csv-copy">CSV 복사</button>
+          <button class="btn" type="button" id="csv-dl" hidden>CSV 다운로드</button>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <select id="xyz-src" aria-label="XYZ 곡선 광원" style="width:auto"></select>
+          <button class="btn" type="button" id="xyz-copy">SolidWorks XYZ 복사</button>
+          <button class="btn" type="button" id="xyz-dl" hidden>XYZ 다운로드</button>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button class="btn" type="button" id="ov-xlsx">겹침 지점 엑셀 저장</button>
+        </div>
+        <div id="expmsg"></div>
+        <p class="note">겹침 지점 = 같은 광원의 경로가 자기 자신과 교차하는 점 (다른 광원과 만나는 점은 제외). 광원별로 좌표와 그 점을 지나는 시각을 엑셀(요약 · LD1~LD3 · 통과시각 시트)로 저장합니다.</p>
+        <p class="note" id="exp-note">XYZ는 SolidWorks의 Insert › Curve › Curve Through XYZ Points에 쓰는 형식(mm, 탭 구분)입니다. 복사한 내용을 .txt로 저장해 불러오세요.</p>
+        <div class="row" style="margin-top:10px"><button class="btn" type="button" id="reset" title="구동 조건, 계산 범위, 광원 배치 각도를 모두 기본값으로">구동 조건 초기화</button></div>
+      </section>
+    </aside>
+
+    <main class="main">
+      <div class="stats" id="stats" aria-live="polite"></div>
+
+      <section class="card ovcard" id="ovcard" aria-labelledby="h-ov" hidden>
+        <div class="ovhead">
+          <h2 id="h-ov">광원별 자기 교차점 <span class="hint">같은 광원의 경로끼리 교차하는 점 · 칸을 누르면 그 광원만 표시</span></h2>
+          <span class="ovshape" id="ov-shape"></span>
+        </div>
+        <div class="ovgrid" id="ovgrid" aria-live="polite"></div>
+      </section>
+
+      <section class="card plotcard" aria-labelledby="h-plot">
+        <div class="plothead">
+          <h2 id="h-plot">수광면 도달 좌표</h2>
+          <div class="row plotctl">
+            <div class="seg" role="radiogroup" aria-label="표시할 광원" id="srcseg"></div>
+            <label class="check" for="ov-show"><input type="checkbox" id="ov-show"> 교차점 표시</label>
+            <div class="seg" role="radiogroup" aria-label="점 색상">
+              <input type="radio" name="color" id="col-time" value="time" checked><label for="col-time">시간</label>
+              <input type="radio" name="color" id="col-src" value="source"><label for="col-src">광원</label>
+              <input type="radio" name="color" id="col-clip" value="clip"><label for="col-clip">빔 손실</label>
+            </div>
+          </div>
+        </div>
+        <canvas id="plot" aria-label="수광면 위 레이저 도달 점 분포"></canvas>
+        <div class="legend" id="legend"></div>
+        <div class="readout" id="hover"></div>
+      </section>
+
+      <div class="cols">
+        <section class="card plotcard" aria-labelledby="h-3d">
+          <div class="plothead"><h2 id="h-3d">광선 경로 <span class="hint">드래그해서 회전</span></h2></div>
+          <canvas id="view3" aria-label="미러, 광원, 수광면과 현재 시각의 광선 경로 3D 보기"></canvas>
+        </section>
+        <section class="card" aria-labelledby="h-time">
+          <h2 id="h-time">시간 커서</h2>
+          <div class="timebar">
+            <button class="btn primary" type="button" id="play">▶ 재생</button>
+            <input type="range" id="tcur" min="0" max="1" value="0" step="1" aria-label="시간 커서">
+            <div class="readout" id="tread"></div>
+          </div>
+          <dl class="geo" id="tdetail"></dl>
+          <p class="note">커서 시각의 각 광원 도달점은 위 그래프에 원으로 표시됩니다.</p>
+        </section>
+      </div>
+
+      <details class="model">
+        <summary>계산 방법과 가정</summary>
+        <ul>
+          <li>구동각 <code>θx = Ax·sin(2πfx·t + φx)</code>, <code>θy = Ay·sin(2πfy·t + φy)</code> (기계각).</li>
+          <li>미러 법선 <code>n(t) = Rx(θx)·Ry(θy)·n0</code> (전역 XY). 짐벌 모드는 미러 면 위의 축 <code>ex, ey = n0 × ex</code>를 씁니다.</li>
+          <li>반사 <code>r = d − 2(d·n)n</code>, 수광면 교점 <code>P = H + μr</code>, <code>μ = ((S − H)·ns)/(r·ns)</code>.</li>
+          <li>광원은 빔 중심 광선 1개로 계산합니다. 빔 손실은 균일한 원형 빔(지름 = 빔 지름)이 미러 원판 밖으로 벗어나는 비율이며, 빔 중심이 미러 중심을 지나면 정확해를 씁니다.</li>
+          <li>미러는 이상적인 평면이고 회전 중심은 반사면 중심입니다. 빔 퍼짐, 가우시안 강도, 구동 중 미러 변형은 반영하지 않습니다.</li>
+          <li>패턴 1회 완성 시간은 <code>Tp = 1 / gcd(fx, fy)</code>이고, 그동안 X축은 <code>fx / gcd</code>회, Y축은 <code>fy / gcd</code>회 진동합니다. 계산 시간은 <code>패턴 반복 횟수 × Tp</code>이며 1 cyc이면 패턴이 한 번 완성됩니다. 주파수는 0.01 Hz 단위로 gcd를 구합니다.</li>
+          <li>광원 배치: 세 광원은 미러 중심에서 R = 65.184 mm 떨어진 구 위에 있고 빔은 미러 중심을 향합니다. 기본값은 θ2 = 50°, θ13 = 52°, α12 = α32 = 30°입니다(3rd_MU.STEP 원래 배치는 θ13 = 57.78°, α = 30.06°). LD2는 극각 θ2·방위 0°(+y 쪽), LD1·LD3는 극각 θ13이며 <code>cos α = cosθ13·cosθ2 + sinθ13·sinθ2·cos φ</code>로 방위 φ를 정합니다. 위치 <code>P = R·(sinθ·sinφ, sinθ·cosφ, cosθ)</code>, 빔 방향 <code>d = −P / R</code>.</li>
+        </ul>
+      </details>
+    </main>
+  </div>
+</div>
+
+<script>
+/* MEMS scan pattern core — port of mems_scan_sim.py (same formulas, same conventions) */
+const MEMS = (() => {
+  const DEG = Math.PI / 180;
+  const MAX_POINTS = 400000;
+
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+  const mul = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const norm = (a) => Math.hypot(a[0], a[1], a[2]);
+  const unit = (a) => { const n = norm(a); return [a[0] / n, a[1] / n, a[2] / n]; };
+
+  const MODES = {
+    global: "전역 XY (COMSOL)",
+    gimbal_xy: "짐벌 · X 바깥",
+    gimbal_yx: "짐벌 · Y 바깥",
+  };
+
+  /* 광원 배치: 미러 중심을 원점으로 하는 반지름 SRC_R 구 위, 빔은 모두 미러 중심을 향함
+     기본값 θ2 = 50°, θ13 = 52°, α12 = α32 = 30°  (참고: 3rd_MU.STEP 원래 배치는 θ13 = 57.78°, α = 30.06°) */
+  const SRC_R = 65.184260678294;
+  const DEFAULT_LAYOUT = { th2: 50, th13: 52, a12: 30, a32: 30 };
+  const LAYOUT_KEYS = ["th2", "th13", "a12", "a32"];
+
+  /* cycles = 패턴 반복 횟수 (1 cyc = 패턴 1회 완성 = 1/gcd(fx, fy)) */
+  const DEFAULT_PARAMS = {
+    Ax: 20, Ay: 15, fx: 3000, fy: 2100, phx: 0, phy: 90,
+    cycles: 2, laser_us: 5, beam_d: 3, screen_mm: 100, mode: "global", ...DEFAULT_LAYOUT,
+  };
+
+  /* 두 주파수의 최대공약수 [Hz] (0.01 Hz 단위) */
+  function gcdHz(fx, fy) {
+    let a = Math.round(fx * 100), b = Math.round(fy * 100);
+    if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) return null;
+    while (b) [a, b] = [b, a % b];
+    return a / 100;
+  }
+  /* 패턴 1회 시간 Tp = 1/gcd, 계산 시간 T = cycles · Tp, 패턴 1회 동안 X·Y 진동 횟수 */
+  function timing(p) {
+    const G = gcdHz(p.fx, p.fy);
+    if (!G) return null;
+    const Tp = 1 / G;
+    return { G, Tp, T: p.cycles * Tp, Nx: p.fx / G, Ny: p.fy / G };
+  }
+
+  /* LD2: 극각 θ2, 방위 0 (+y 쪽).  LD1·LD3: 극각 θ13, LD2 와 이루는 각 α12·α32 (미러 중심 기준)
+     cos α = cosθ13·cosθ2 + sinθ13·sinθ2·cos φ  →  φ (LD1 은 +x 쪽, LD3 는 −x 쪽)
+     위치 P = R·(sinθ·sinφ, sinθ·cosφ, cosθ),  빔 방향 d = −P/R */
+  function layoutGeometry(p) {
+    const lim = [Math.abs(p.th13 - p.th2), Math.min(p.th13 + p.th2, 180)];
+    if (!(p.th2 > 0 && p.th2 < 90)) return { error: "LD2 각도 θ2는 0°보다 크고 90°보다 작아야 합니다.", bad: "th2", lim };
+    if (!(p.th13 > 0 && p.th13 < 90)) return { error: "LD1·LD3 각도 θ13은 0°보다 크고 90°보다 작아야 합니다.", bad: "th13", lim };
+    const th = [p.th13 * DEG, p.th2 * DEG, p.th13 * DEG], phi = [0, 0, 0];
+    for (const [k, key, nm] of [[0, "a12", "LD1–LD2 사이각 α12"], [2, "a32", "LD3–LD2 사이각 α32"]]) {
+      const a = p[key];
+      const c = (Math.cos(a * DEG) - Math.cos(th[k]) * Math.cos(th[1])) / (Math.sin(th[k]) * Math.sin(th[1]));
+      if (!(a >= 0 && Math.abs(c) <= 1 + 1e-12)) {
+        return { error: `${nm} ${+(+a).toFixed(4)}°는 만들 수 없는 배치입니다. 지금 θ2, θ13에서는 ${lim[0].toFixed(2)}° ~ ${lim[1].toFixed(2)}° 사이여야 합니다.`, bad: key, lim };
+      }
+      phi[k] = Math.acos(Math.max(-1, Math.min(1, c)));
+    }
+    phi[2] = -phi[2];
+    const names = ["LD1 (+x)", "LD2 (중앙)", "LD3 (−x)"];
+    const s25 = Math.sin(25 * DEG), c25 = Math.cos(25 * DEG);
+    const sources = th.map((t, k) => {
+      const d = [-Math.sin(t) * Math.sin(phi[k]), -Math.sin(t) * Math.cos(phi[k]), -Math.cos(t)];
+      return { name: names[k], pos: [-SRC_R * d[0] + 0, -SRC_R * d[1] + 0, -SRC_R * d[2] + 0], dir: d, radius: 1.5, polar: t / DEG, az: phi[k] / DEG };
+    });
+    return {
+      lim,
+      geo: {
+        label: "3rd_MU.STEP 기반 (광원 배치 각도 적용)",
+        mirrorCenter: [0, 0, 0],
+        mirrorNormal: [0, s25, c25],      // x축 기준 25° 기울어진 미러
+        mirrorRadius: 2.75,               // Ø5.5
+        sources,
+        screenNormal: [0, 0, 1],
+        screenDist: 100,
+        plateUV: [-500, 500, -500, 500],  // 1000 x 1000 mm
+        srcR: SRC_R,
+      },
+    };
+  }
+  const defaultGeometry = () => layoutGeometry(DEFAULT_PARAMS).geo;
+
+  function screenAxes(ns) {
+    let u = sub([1, 0, 0], mul(ns, ns[0]));
+    if (norm(u) < 1e-9) u = sub([0, 1, 0], mul(ns, ns[1]));
+    u = unit(u);
+    return [u, cross(ns, u)];
+  }
+
+  function mirrorAxes(n0) {
+    let ex = sub([1, 0, 0], mul(n0, n0[0]));
+    if (norm(ex) < 1e-9) ex = sub([0, 1, 0], mul(n0, n0[1]));
+    ex = unit(ex);
+    return [ex, cross(n0, ex)];
+  }
+
+  /* Rodrigues: rotate v about unit axis k by angle a */
+  function rot(v, k, a) {
+    const c = Math.cos(a), s = Math.sin(a), kd = dot(k, v) * (1 - c), kx = cross(k, v);
+    return [v[0] * c + kx[0] * s + k[0] * kd, v[1] * c + kx[1] * s + k[1] * kd, v[2] * c + kx[2] * s + k[2] * kd];
+  }
+
+  /* exact overlap of beam footprint ellipse (a = rb/cos i, b = rb) with mirror circle Rm, both centred */
+  function fractionConcentric(cosI, rb, Rm) {
+    const a = rb / Math.max(cosI, 1e-12), b = rb;
+    if (b >= Rm) return (Rm * Rm) / (a * b);
+    if (a <= Rm) return 1;
+    let s2 = (1 / (Rm * Rm) - 1 / (a * a)) / (1 / (b * b) - 1 / (a * a));
+    s2 = Math.min(1, Math.max(0, s2));
+    const phi0 = Math.asin(Math.sqrt(s2));
+    const area = 2 * Rm * Rm * phi0 + 2 * a * b * (Math.PI / 2 - Math.atan((a / b) * Math.tan(phi0)));
+    return area / (Math.PI * a * b);
+  }
+
+  function beamOffsets(d, radius, nr = 16, nphi = 64) {
+    const a = Math.abs(d[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+    const b1 = unit(cross(d, a)), b2 = cross(d, b1);
+    const out = [];
+    for (let j = 0; j < nphi; j++) {
+      const ph = ((j + 0.5) * 2 * Math.PI) / nphi;
+      for (let i = 0; i < nr; i++) {
+        const r = radius * Math.sqrt((i + 0.5) / nr);
+        out.push(add(mul(b1, r * Math.cos(ph)), mul(b2, r * Math.sin(ph))));
+      }
+    }
+    return out;
+  }
+
+  function simulate(p, geo) {
+    const tm = timing(p);
+    const T = tm ? tm.T : p.cycles / p.fx, dt = p.laser_us * 1e-6;
+    let N = Math.floor(T / dt + 1e-9) + 1;
+    const truncated = N > MAX_POINTS;
+    N = Math.min(N, MAX_POINTS);
+
+    const t = new Float64Array(N), thx = new Float64Array(N), thy = new Float64Array(N);
+    const nx = new Float64Array(N), ny = new Float64Array(N), nz = new Float64Array(N);
+    const n0 = geo.mirrorNormal;
+    const [ex, ey] = mirrorAxes(n0);
+    const X = [1, 0, 0], Y = [0, 1, 0];
+    const Ax = p.Ax * DEG, Ay = p.Ay * DEG, wx = 2 * Math.PI * p.fx, wy = 2 * Math.PI * p.fy;
+    const px = p.phx * DEG, py = p.phy * DEG;
+    for (let i = 0; i < N; i++) {
+      const ti = i * dt;
+      const ax = Ax * Math.sin(wx * ti + px), ay = Ay * Math.sin(wy * ti + py);
+      let n;
+      if (p.mode === "gimbal_xy") n = rot(rot(n0, ey, ay), ex, ax);
+      else if (p.mode === "gimbal_yx") n = rot(rot(n0, ex, ax), ey, ay);
+      else n = rot(rot(n0, Y, ay), X, ax); // global: Rx(θx)·Ry(θy)·n0
+      t[i] = ti; thx[i] = ax; thy[i] = ay; nx[i] = n[0]; ny[i] = n[1]; nz[i] = n[2];
+    }
+
+    const ns = unit(geo.screenNormal), c = geo.mirrorCenter, R = geo.mirrorRadius;
+    const S = add(c, mul(ns, p.screen_mm));
+    const [eu, ev] = screenAxes(ns);
+    const [u0, u1, v0, v1] = geo.plateUV;
+    const rb = p.beam_d / 2;
+
+    const sources = geo.sources.map((src) => {
+      const d = src.dir, ps = src.pos;
+      const cp = sub(c, ps), w = sub(ps, c), dw = dot(d, w);
+      const o = {
+        name: src.name,
+        u: new Float64Array(N), v: new Float64Array(N),
+        Px: new Float64Array(N), Py: new Float64Array(N), Pz: new Float64Array(N),
+        Hx: new Float64Array(N), Hy: new Float64Array(N), Hz: new Float64Array(N),
+        rx: new Float64Array(N), ry: new Float64Array(N), rz: new Float64Array(N),
+        inc: new Float64Array(N), frac: p.beam_d > 0 ? new Float64Array(N) : null,
+        valid: new Uint8Array(N),
+      };
+      let U = null, wu2 = null;
+      for (let i = 0; i < N; i++) {
+        const n = [nx[i], ny[i], nz[i]];
+        const dn = dot(n, d);
+        const lam = dot(cp, n) / dn;
+        const H = add(ps, mul(d, lam));
+        const off = norm(sub(H, c));
+        const onMirror = dn < 0 && off <= R + 1e-9;
+        const r = sub(d, mul(n, 2 * dn));
+        const rn = dot(r, ns);
+        const mu = dot(sub(S, H), ns) / rn;
+        const P = add(H, mul(r, mu));
+        const PS = sub(P, S);
+        const u = dot(PS, eu), v = dot(PS, ev);
+        const ok = onMirror && mu > 0 && u >= u0 && u <= u1 && v >= v0 && v <= v1 && Number.isFinite(u) && Number.isFinite(v);
+        o.u[i] = u; o.v[i] = v; o.Px[i] = P[0]; o.Py[i] = P[1]; o.Pz[i] = P[2];
+        o.Hx[i] = H[0]; o.Hy[i] = H[1]; o.Hz[i] = H[2];
+        o.rx[i] = r[0]; o.ry[i] = r[1]; o.rz[i] = r[2];
+        o.valid[i] = ok ? 1 : 0;
+        o.inc[i] = Math.acos(Math.min(1, Math.max(-1, -dn))) / DEG;
+        if (o.frac) {
+          if (dn >= 0) o.frac[i] = 0;
+          else if (off < 1e-3 * R) o.frac[i] = fractionConcentric(-dn, rb, R);
+          else {
+            if (!U) { U = beamOffsets(d, rb); wu2 = U.map((k) => { const q = add(w, k); return dot(q, q); }); }
+            const A = -dot(n, w);
+            let inside = 0;
+            for (let k = 0; k < U.length; k++) {
+              const l = (A - dot(n, U[k])) / dn;
+              if (wu2[k] + 2 * l * dw + l * l <= R * R) inside++;
+            }
+            o.frac[i] = inside / U.length;
+          }
+        }
+      }
+      return o;
+    });
+    return { t, thx, thy, nx, ny, nz, S, eu, ev, sources, truncated, params: { ...p }, N, T, timing: tm, Tcalc: (N - 1) * dt };
+  }
+
+  function repeatPeriod(fx, fy) {
+    const G = gcdHz(fx, fy);
+    return G ? 1 / G : null;
+  }
+
+  function summary(sim) {
+    let umin = Infinity, umax = -Infinity, vmin = Infinity, vmax = -Infinity, bad = 0, validN = 0;
+    const per = sim.sources.map((s) => {
+      let incMax = 0, clipped = 0, fmin = 1;
+      for (let i = 0; i < sim.N; i++) {
+        if (s.inc[i] > incMax) incMax = s.inc[i];
+        if (s.frac) { if (s.frac[i] < 0.999) clipped++; if (s.frac[i] < fmin) fmin = s.frac[i]; }
+        if (s.valid[i]) {
+          validN++;
+          const u = s.u[i], v = s.v[i];
+          if (u < umin) umin = u; if (u > umax) umax = u; if (v < vmin) vmin = v; if (v > vmax) vmax = v;
+        } else bad++;
+      }
+      return { name: s.name, incMax, clippedPct: s.frac ? (100 * clipped) / sim.N : null, fmin: s.frac ? fmin : null };
+    });
+    return { umin, umax, vmin, vmax, bad, validN, per, repeat: repeatPeriod(sim.params.fx, sim.params.fy) };
+  }
+
+  function csvText(sim) {
+    const lines = ["t_s,source,u_mm,v_mm,X_mm,Y_mm,Z_mm,incidence_deg,captured_frac,valid,theta_x_deg,theta_y_deg"];
+    sim.sources.forEach((s, k) => {
+      for (let i = 0; i < sim.N; i++) {
+        lines.push([
+          sim.t[i].toExponential(9), k + 1, s.u[i].toFixed(6), s.v[i].toFixed(6),
+          s.Px[i].toFixed(6), s.Py[i].toFixed(6), s.Pz[i].toFixed(6), s.inc[i].toFixed(6),
+          s.frac ? s.frac[i].toFixed(4) : "nan", s.valid[i], (sim.thx[i] / DEG).toFixed(5), (sim.thy[i] / DEG).toFixed(5),
+        ].join(","));
+      }
+    });
+    return lines.join("\n") + "\n";
+  }
+
+  function xyzText(sim, k) {
+    const s = sim.sources[k], out = [];
+    for (let i = 0; i < sim.N; i++) if (s.valid[i]) out.push(`${s.Px[i].toFixed(6)}\t${s.Py[i].toFixed(6)}\t${s.Pz[i].toFixed(6)}`);
+    return out.join("\n") + "\n";
+  }
+
+  /* ---------- 겹침(경로 자기 교차점) 분석 — mems_scan_sim.py 의 find_overlaps 와 같은 방법 ----------
+     1) 패턴 한 주기(1/gcd)를 촘촘한 꺾은선으로 나눠 선분 교차를 찾고
+     2) 실제 반사 모델로 P(t1) = P(t2) 를 뉴턴법으로 풀어 시각·좌표를 정밀화
+     3) 계산 시간 안에서 그 점을 지나는 모든 시각을 나열 */
+  const mod = (x, m) => x - Math.floor(x / m) * m;
+  function frameOf(p, geo) {
+    const ns = unit(geo.screenNormal);
+    const [eu, ev] = screenAxes(ns);
+    return { S: add(geo.mirrorCenter, mul(ns, p.screen_mm)), ns, eu, ev };
+  }
+  function basisOf(p, geo) {
+    const [ex, ey] = mirrorAxes(geo.mirrorNormal);
+    return { n0: geo.mirrorNormal, ex, ey, Ax: p.Ax * DEG, Ay: p.Ay * DEG, wx: 2 * Math.PI * p.fx, wy: 2 * Math.PI * p.fy,
+             px: p.phx * DEG, py: p.phy * DEG, mode: p.mode };
+  }
+  function normalAt(t, B) {
+    const ax = B.Ax * Math.sin(B.wx * t + B.px), ay = B.Ay * Math.sin(B.wy * t + B.py);
+    if (B.mode === "gimbal_xy") return rot(rot(B.n0, B.ey, ay), B.ex, ax);
+    if (B.mode === "gimbal_yx") return rot(rot(B.n0, B.ex, ax), B.ey, ay);
+    return rot(rot(B.n0, [0, 1, 0], ay), [1, 0, 0], ax);
+  }
+  function hitAt(src, n, geo, F) {
+    const d = src.dir, c = geo.mirrorCenter;
+    const dn = dot(n, d);
+    const H = add(src.pos, mul(d, dot(sub(c, src.pos), n) / dn));
+    const onMirror = dn < 0 && norm(sub(H, c)) <= geo.mirrorRadius + 1e-9;
+    const r = sub(d, mul(n, 2 * dn));
+    const mu = dot(sub(F.S, H), F.ns) / dot(r, F.ns);
+    const P = add(H, mul(r, mu)), PS = sub(P, F.S);
+    const u = dot(PS, F.eu), v = dot(PS, F.ev);
+    const [u0, u1, v0, v1] = geo.plateUV;
+    const valid = onMirror && mu > 0 && u >= u0 && u <= u1 && v >= v0 && v <= v1 && Number.isFinite(u) && Number.isFinite(v);
+    return { u, v, P, valid };
+  }
+
+  /* 왕복(되짚는) 경로: 모든 t 에서 θ(c − t) = θ(t) 인 c. 조건 f·c ≡ 1/2 − φ/π (mod 1) 을 x, y 동시에 만족 */
+  function retraceTime(p, Tp) {
+    if (Tp == null || (p.Ax === 0 && p.Ay === 0)) return null;
+    const ax = mod(0.5 - p.phx / 180, 1), ay = mod(0.5 - p.phy / 180, 1);
+    if (p.Ay === 0) return mod(ax / p.fx, Tp);
+    if (p.Ax === 0) return mod(ay / p.fy, Tp);
+    const P = Math.round(p.fx * Tp);
+    for (let k = 0; k < P; k++) {
+      const c = (ax + k) / p.fx, r = p.fy * c - ay;
+      if (Math.abs(r - Math.round(r)) < 1e-7) return mod(c, Tp);
+    }
+    return null;
+  }
+
+  /* 꺾은선 자기 교차 (격자 해시) → [{i, j, s, w}] */
+  function polylineCrossings(U, V, ok, closed) {
+    const M = U.length - 1, idx = [];
+    for (let i = 0; i < M; i++) if (ok[i] && ok[i + 1] && Number.isFinite(U[i]) && Number.isFinite(V[i]) && Number.isFinite(U[i + 1]) && Number.isFinite(V[i + 1])) idx.push(i);
+    if (idx.length < 3) return [];
+    const L = new Float64Array(M);
+    let Lmax = 0, ox = Infinity, oy = Infinity;
+    for (const i of idx) {
+      L[i] = Math.hypot(U[i + 1] - U[i], V[i + 1] - V[i]);
+      if (L[i] > Lmax) Lmax = L[i];
+      ox = Math.min(ox, U[i], U[i + 1]); oy = Math.min(oy, V[i], V[i + 1]);
+    }
+    const h = Math.max(2 * Lmax, 1e-12);
+    const c0x = [], c0y = [], c1x = [], c1y = [];
+    let maxcy = 0;
+    for (const i of idx) {
+      const a = Math.floor((Math.min(U[i], U[i + 1]) - ox) / h), b = Math.floor((Math.min(V[i], V[i + 1]) - oy) / h);
+      const c = Math.floor((Math.max(U[i], U[i + 1]) - ox) / h), d = Math.floor((Math.max(V[i], V[i + 1]) - oy) / h);
+      c0x.push(a); c0y.push(b); c1x.push(c); c1y.push(d); if (d > maxcy) maxcy = d;
+    }
+    const ny = maxcy + 2, cells = new Map();
+    idx.forEach((i, q) => {
+      for (let dx = 0; dx < 2; dx++) for (let dy = 0; dy < 2; dy++) {
+        if (c0x[q] + dx > c1x[q] || c0y[q] + dy > c1y[q]) continue;
+        const key = (c0x[q] + dx) * ny + (c0y[q] + dy);
+        const arr = cells.get(key); if (arr) arr.push(i); else cells.set(key, [i]);
+      }
+    });
+    const pairs = new Set();
+    for (const g of cells.values()) {
+      if (g.length < 2) continue;
+      for (let a = 0; a < g.length; a++) for (let b = a + 1; b < g.length; b++) {
+        const i = Math.min(g[a], g[b]), j = Math.max(g[a], g[b]);
+        if (j - i <= 1 || (closed && i === 0 && j === M - 1)) continue;
+        pairs.add(i * M + j);
+      }
+    }
+    const out = [], eps = 1e-9;
+    for (const code of pairs) {
+      const i = Math.floor(code / M), j = code - i * M;
+      const rx = U[i + 1] - U[i], ry = V[i + 1] - V[i], wx = U[j + 1] - U[j], wy = V[j + 1] - V[j];
+      const den = rx * wy - ry * wx;
+      if (den === 0) continue;
+      const qx = U[j] - U[i], qy = V[j] - V[i];
+      const s = (qx * wy - qy * wx) / den, w = (qx * ry - qy * rx) / den;
+      if (s >= -eps && s <= 1 + eps && w >= -eps && w <= 1 + eps) out.push({ i, j, s, w });
+    }
+    return out;
+  }
+
+  function findOverlaps(p, geo, samplesPerCycle = 1024, maxSamples = 400000) {
+    const tm = timing(p);
+    const T = tm ? tm.T : p.cycles / p.fx;
+    const empty = () => geo.sources.map((s) => ({ name: s.name, ta: [], tb: [], u: [], v: [], P: [], angle: [], resid: [], occ: [] }));
+    if (p.Ax === 0 && p.Ay === 0) return { T, Tp: null, shape: "static", retrace: null, Ta: T, w0: 0, samples: 0, sources: empty(), params: { ...p } };
+    const Tp = p.Ay === 0 ? 1 / p.fx : p.Ax === 0 ? 1 / p.fy : repeatPeriod(p.fx, p.fy);
+    const cRet = retraceTime(p, Tp);
+    let shape, Ta, w0, closed;
+    if (cRet !== null) { shape = "retrace"; Ta = Tp / 2; w0 = mod(cRet / 2, Ta); closed = false; }
+    else if (Tp !== null && Tp <= T * (1 + 1e-12)) { shape = "closed"; Ta = Tp; w0 = 0; closed = true; }
+    else { shape = "open"; Ta = T; w0 = 0; closed = false; }
+    let M = Math.ceil(Ta * Math.max(p.fx, p.fy) * samplesPerCycle);
+    M = Math.min(Math.max(M, 256), maxSamples);
+    const dt = Ta / M, off = closed ? 0.3819660112501051 * dt : 0;
+    const B = basisOf(p, geo), F = frameOf(p, geo);
+    const ts = new Float64Array(M + 1), normals = [];
+    for (let q = 0; q <= M; q++) { ts[q] = w0 + off + (q / M) * Ta; normals.push(normalAt(ts[q], B)); }
+    const tol = dt * 1e-3, hd = dt * 1e-3;
+    const sources = geo.sources.map((src) => {
+      const U = new Float64Array(M + 1), V = new Float64Array(M + 1), ok = new Uint8Array(M + 1);
+      for (let q = 0; q <= M; q++) { const hh = hitAt(src, normals[q], geo, F); U[q] = hh.u; V[q] = hh.v; ok[q] = hh.valid ? 1 : 0; }
+      const uv = (t) => { const hh = hitAt(src, normalAt(t, B), geo, F); return [hh.u, hh.v]; };
+      let cand = [];
+      for (const x of polylineCrossings(U, V, ok, closed)) {
+        let ta = ts[x.i] + x.s * dt, tb = ts[x.j] + x.w * dt;
+        const t0a = ta, t0b = tb;
+        for (let it = 0; it < 8; it++) {            // 뉴턴법: P(ta) = P(tb)
+          const [ua, va] = uv(ta), [ub, vb] = uv(tb);
+          const F0 = ua - ub, F1 = va - vb;
+          const [uap, vap] = uv(ta + hd), [uam, vam] = uv(ta - hd), [ubp, vbp] = uv(tb + hd), [ubm, vbm] = uv(tb - hd);
+          const a11 = (uap - uam) / (2 * hd), a21 = (vap - vam) / (2 * hd), a12 = -(ubp - ubm) / (2 * hd), a22 = -(vbp - vbm) / (2 * hd);
+          const det = a11 * a22 - a12 * a21;
+          let da = (-F0 * a22 + a12 * F1) / det, db = (-a11 * F1 + F0 * a21) / det;
+          if (!Number.isFinite(da)) da = 0; if (!Number.isFinite(db)) db = 0;
+          da = Math.max(-dt, Math.min(dt, da)); db = Math.max(-dt, Math.min(dt, db));
+          ta = Math.max(t0a - 2 * dt, Math.min(t0a + 2 * dt, ta + da));
+          tb = Math.max(t0b - 2 * dt, Math.min(t0b + 2 * dt, tb + db));
+        }
+        const [ua, va] = uv(ta), [ub, vb] = uv(tb);
+        const gax = uv(ta + hd)[0] - uv(ta - hd)[0], gay = uv(ta + hd)[1] - uv(ta - hd)[1];
+        const gbx = uv(tb + hd)[0] - uv(tb - hd)[0], gby = uv(tb + hd)[1] - uv(tb - hd)[1];
+        const cosang = Math.abs(gax * gbx + gay * gby) / (Math.hypot(gax, gay) * Math.hypot(gbx, gby));
+        const angle = Math.acos(Math.min(1, Math.max(0, cosang))) / DEG;
+        if (closed) { ta = mod(ta, Tp); tb = mod(tb, Tp); if (ta > Tp - tol) ta = 0; if (tb > Tp - tol) tb = 0; }
+        if (ta > tb) [ta, tb] = [tb, ta];
+        const resid = Math.hypot(ua - ub, va - vb);
+        if (resid < 1e-5 && tb - ta > tol) cand.push({ ta, tb, u: (ua + ub) / 2, v: (va + vb) / 2, resid, angle });
+      }
+      // 이웃 선분에서 두 번 잡힌 같은 점 합치기
+      cand.sort((a, b) => a.ta - b.ta || a.tb - b.tb);
+      const kept = [];
+      for (const cnd of cand) {
+        if (kept.slice(-8).some((k) => Math.abs(k.ta - cnd.ta) <= tol && Math.abs(k.tb - cnd.tb) <= tol)) continue;
+        kept.push(cnd);
+      }
+      // 계산 시간 [0, T] 안의 모든 통과 시각
+      const res = [];
+      for (const cnd of kept) {
+        const base = cRet === null ? [cnd.ta, cnd.tb] : [cnd.ta, cnd.tb, cRet - cnd.ta, cRet - cnd.tb];
+        let times = [];
+        for (const x of base) {
+          if (Tp === null) { times.push(x); continue; }
+          const x0 = mod(x, Tp), nrep = Math.floor((T - x0) / Tp + 1e-9);
+          for (let m = 0; m <= nrep; m++) times.push(x0 + m * Tp);
+        }
+        times = times.filter((x) => x >= -1e-15 && x <= T * (1 + 1e-12)).map((x) => Math.round(x * 1e15) / 1e15).sort((a, b) => a - b);
+        times = times.filter((x, q) => q === 0 || x !== times[q - 1]);
+        if (times.length >= 2) res.push({ ...cnd, ta: times[0], tb: times[1], occ: times });
+      }
+      res.sort((a, b) => a.ta - b.ta);
+      return {
+        name: src.name,
+        ta: res.map((r) => r.ta), tb: res.map((r) => r.tb), u: res.map((r) => r.u), v: res.map((r) => r.v),
+        P: res.map((r) => hitAt(src, normalAt(r.ta, B), geo, F).P), angle: res.map((r) => r.angle),
+        resid: res.map((r) => r.resid), occ: res.map((r) => r.occ),
+      };
+    });
+    return { T, Tp, shape, retrace: cRet, Ta, w0, samples: M, sources, params: { ...p } };
+  }
+
+  function overlapShapeText(ov) {
+    const g = (x) => +x.toPrecision(6);
+    if (ov.shape === "closed") return `닫힌 경로: 패턴 한 주기 ${g(ov.Tp * 1e3)} ms 안에서 교차점을 찾음 (계산 시간 안에 ${+(ov.T / ov.Tp).toPrecision(3)}회 반복)`;
+    if (ov.shape === "retrace") return `왕복 경로: 반 주기(${g(ov.Ta * 1e3)} ms)마다 같은 길을 거꾸로 되짚어 가므로 경로 전체가 겹침. 교차점은 편도 경로에서 찾고, 되짚어 올 때의 통과 시각도 함께 적음`;
+    if (ov.shape === "static") return "미러가 움직이지 않음 (Ax = Ay = 0): 겹침 없음";
+    return `열린 경로: 계산 시간 ${g(ov.T * 1e3)} ms 안에서 패턴이 닫히지 않음 (그 구간 안의 교차점)`;
+  }
+
+  /* ---------- 결과 엑셀(.xlsx) — 외부 라이브러리 없이 직접 만듦 (회사 방화벽에서도 동작) ----------
+     시트 '결과'     : 펄스마다 번호, t, θx, θy, LD1~LD3 x·y, 빔 반사율  (엑셀 시뮬레이터의 '결과' 시트와 같은 열)
+     시트 '조건·요약': 입력값, gcd·계산 시간, 광원 배치, 결과 요약 */
+  const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  function crc32(crc, buf) { let c = ~crc >>> 0; for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8); return ~c >>> 0; }
+  const xmlEsc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "");
+  const colName = (c) => { let s = ""; c++; while (c > 0) { const m = (c - 1) % 26; s = String.fromCharCode(65 + m) + s; c = Math.floor((c - 1) / 26); } return s; };
+  const ST = { none: 0, head: 1, int: 2, t: 3, d3: 4, d1: 5, title: 6, muted: 7, bold: 8, d6: 3, sci: 9 };
+
+  function cellXml(v, s, ref) {
+    if (v === null || v === undefined || v === "") return "";
+    const st = s ? ` s="${s}"` : "";
+    if (typeof v === "number") return Number.isFinite(v) ? `<c r="${ref}"${st}><v>${+v.toPrecision(15)}</v></c>` : "";
+    return `<c r="${ref}"${st} t="inlineStr"><is><t xml:space="preserve">${xmlEsc(v)}</t></is></c>`;
+  }
+  /* rows: iterable of arrays; 셀 = 값 또는 {v, s} */
+  function* sheetXml(sh) {
+    let head = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">';
+    head += `<sheetViews><sheetView workbookViewId="0"${sh.selected ? ' tabSelected="1"' : ""}>` +
+      (sh.freeze ? '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A2" sqref="A2"/>' : "") + "</sheetView></sheetViews>";
+    head += '<sheetFormatPr defaultRowHeight="16.5"/>';
+    if (sh.cols) head += "<cols>" + sh.cols.map((w, c) => `<col min="${c + 1}" max="${c + 1}" width="${w}" customWidth="1"/>`).join("") + "</cols>";
+    head += "<sheetData>";
+    yield head;
+    let r = 0, buf = [];
+    for (const row of sh.rows) {
+      r++;
+      let x = `<row r="${r}"${sh.freeze && r === 1 ? ' ht="30" customHeight="1"' : ""}>`;
+      for (let c = 0; c < row.length; c++) {
+        const cell = row[c];
+        if (cell !== null && typeof cell === "object") x += cellXml(cell.v, cell.s, colName(c) + r);
+        else x += cellXml(cell, sh.colStyle ? sh.colStyle[c] : 0, colName(c) + r);
+      }
+      buf.push(x + "</row>");
+      if (buf.length >= 2000) { yield buf.join(""); buf = []; }
+    }
+    buf.push("</sheetData></worksheet>");
+    yield buf.join("");
+  }
+
+  const STYLES_XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    '<numFmts count="4"><numFmt numFmtId="164" formatCode="0.000000"/><numFmt numFmtId="165" formatCode="0.000"/><numFmt numFmtId="166" formatCode="0.0"/><numFmt numFmtId="167" formatCode="0.0E+00"/></numFmts>' +
+    '<fonts count="4"><font><sz val="10"/><name val="맑은 고딕"/><family val="3"/><charset val="129"/></font>' +
+    '<font><b/><sz val="10"/><color rgb="FF16202C"/><name val="맑은 고딕"/><family val="3"/><charset val="129"/></font>' +
+    '<font><b/><sz val="14"/><color rgb="FF16202C"/><name val="맑은 고딕"/><family val="3"/><charset val="129"/></font>' +
+    '<font><sz val="10"/><color rgb="FF5A6677"/><name val="맑은 고딕"/><family val="3"/><charset val="129"/></font></fonts>' +
+    '<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>' +
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFE3EBF9"/><bgColor indexed="64"/></patternFill></fill></fills>' +
+    '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>' +
+    '<border><left/><right/><top/><bottom style="medium"><color rgb="FF1D55B5"/></bottom><diagonal/></border></borders>' +
+    '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+    '<cellXfs count="10"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+    '<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>' +
+    '<xf numFmtId="1" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
+    '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
+    '<xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
+    '<xf numFmtId="166" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
+    '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
+    '<xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
+    '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
+    '<xf numFmtId="167" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>' +
+    '<cellStyles count="1"><cellStyle name="표준" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+
+  /* 압축: CompressionStream(deflate-raw) → 없으면 deflate 의 머리·꼬리 제거 → 그것도 없으면 무압축 */
+  async function makeEntry(name, pieces) {
+    const enc = new TextEncoder();
+    const formats = typeof CompressionStream === "function" ? ["deflate-raw", "deflate"] : [];
+    for (const fmtName of formats) {
+      let cs;
+      try { cs = new CompressionStream(fmtName); } catch (e) { continue; }
+      const writer = cs.writable.getWriter(), reader = cs.readable.getReader(), out = [];
+      const pump = (async () => { for (;;) { const { done, value } = await reader.read(); if (done) break; out.push(value); } })();
+      let crc = 0, usize = 0;
+      for (const piece of pieces()) { const b = enc.encode(piece); crc = crc32(crc, b); usize += b.length; await writer.write(b); }
+      await writer.close(); await pump;
+      let data = concat(out);
+      if (fmtName === "deflate") data = data.subarray(2, data.length - 4);   // zlib 머리(2)·adler32(4) 제거
+      return { name, method: 8, crc, usize, data };
+    }
+    const chunks = []; let crc = 0;
+    for (const piece of pieces()) { const b = enc.encode(piece); crc = crc32(crc, b); chunks.push(b); }
+    const data = concat(chunks);
+    return { name, method: 0, crc, usize: data.length, data };
+  }
+  function concat(arrs) { let n = 0; for (const a of arrs) n += a.length; const o = new Uint8Array(n); let k = 0; for (const a of arrs) { o.set(a, k); k += a.length; } return o; }
+  function zipBytes(entries) {
+    const enc = new TextEncoder(), d = new Date();
+    const dosT = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+    const dosD = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+    const parts = [], central = []; let off = 0;
+    for (const e of entries) {
+      const nm = enc.encode(e.name), h = new DataView(new ArrayBuffer(30));
+      h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, e.method, true);
+      h.setUint16(10, dosT, true); h.setUint16(12, dosD, true); h.setUint32(14, e.crc, true); h.setUint32(18, e.data.length, true);
+      h.setUint32(22, e.usize, true); h.setUint16(26, nm.length, true); h.setUint16(28, 0, true);
+      parts.push(new Uint8Array(h.buffer), nm, e.data);
+      const c = new DataView(new ArrayBuffer(46));
+      c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(10, e.method, true);
+      c.setUint16(12, dosT, true); c.setUint16(14, dosD, true); c.setUint32(16, e.crc, true); c.setUint32(20, e.data.length, true); c.setUint32(24, e.usize, true);
+      c.setUint16(28, nm.length, true); c.setUint32(42, off, true);
+      central.push(new Uint8Array(c.buffer), nm);
+      off += 30 + nm.length + e.data.length;
+    }
+    const cd = concat(central), end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true); end.setUint16(8, entries.length, true); end.setUint16(10, entries.length, true);
+    end.setUint32(12, cd.length, true); end.setUint32(16, off, true);
+    return concat([...parts, cd, new Uint8Array(end.buffer)]);
+  }
+  async function writeXlsx(sheets) {
+    const ws = sheets.map((sh, i) => `<sheet name="${xmlEsc(sh.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join("");
+    const files = [
+      ["[Content_Types].xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>' +
+        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+        '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+        sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("") + "</Types>"],
+      ["_rels/.rels", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
+      ["xl/workbook.xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+        `<bookViews><workbookView activeTab="0"/></bookViews><sheets>${ws}</sheets></workbook>`],
+      ["xl/_rels/workbook.xml.rels", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join("") +
+        `<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
+      ["xl/styles.xml", STYLES_XML],
+    ];
+    const entries = [];
+    for (const [name, text] of files) entries.push(await makeEntry(name, function* () { yield text; }));
+    for (let i = 0; i < sheets.length; i++) entries.push(await makeEntry(`xl/worksheets/sheet${i + 1}.xml`, () => sheetXml({ ...sheets[i], selected: i === 0 })));
+    return zipBytes(entries);
+  }
+
+  function resultsXlsx(sim, sum, geo, extra = {}) {
+    const p = sim.params, tm = sim.timing, N = sim.N, D = DEG, srcs = sim.sources;
+    const names = geo.sources.map((s) => s.name.split(" ")[0]);
+    const heads = ["번호", "t [ms]", "θx [°]", "θy [°]"];
+    names.forEach((nm) => heads.push(`${nm} x [mm]`, `${nm} y [mm]`));
+    names.forEach((nm) => heads.push(`${nm} 빔 반사 [%]`));
+    const nS = srcs.length;
+    const colStyle = [ST.int, ST.t, ST.d3, ST.d3, ...Array(2 * nS).fill(ST.d3), ...Array(nS).fill(ST.d1)];
+    const resRows = function* () {
+      yield heads.map((h) => ({ v: h, s: ST.head }));
+      for (let i = 0; i < N; i++) {
+        const row = [i + 1, sim.t[i] * 1e3, sim.thx[i] / D, sim.thy[i] / D];
+        for (const s of srcs) { if (s.valid[i]) row.push(s.u[i], s.v[i]); else row.push(null, null); }
+        for (const s of srcs) row.push(s.frac ? s.frac[i] * 100 : null);
+        yield row;
+      }
+    };
+    const modeKo = { global: "전역 XY (COMSOL과 동일)", gimbal_xy: "짐벌 · X 바깥", gimbal_yx: "짐벌 · Y 바깥" };
+    const L = (label, v, unit, s) => [label, v === null || v === undefined ? "" : (typeof v === "number" ? { v, s: s ?? ST.d3 } : v), unit || ""];
+    const sec = (t) => [{ v: t, s: ST.bold }];
+    const info = [
+      [{ v: "MEMS 스캔 패턴 시뮬레이터 결과", s: ST.title }],
+      [{ v: `저장 ${extra.stamp || ""}  ·  '결과' 시트: 펄스마다 각 광원의 수광면 x, y 좌표 (미러를 벗어나거나 1000 × 1000 mm 판 밖이면 빈칸)`, s: ST.muted }],
+      [],
+      sec("계산 조건"),
+      L("회전축 정의", modeKo[p.mode] || p.mode),
+      L("X축 진폭 Ax", p.Ax, "°"), L("Y축 진폭 Ay", p.Ay, "°"),
+      L("X축 주파수 fx", p.fx, "Hz"), L("Y축 주파수 fy", p.fy, "Hz"),
+      L("X축 위상 φx", p.phx, "°"), L("Y축 위상 φy", p.phy, "°"),
+      L("최대공약수 gcd(fx, fy)", tm ? tm.G : null, "Hz"),
+      L("패턴 1회 완성 시간 1/gcd", tm ? tm.Tp * 1e3 : null, "ms", ST.t),
+      L("패턴 1회 동안 X축 진동 수", tm ? tm.Nx : null, "회"), L("패턴 1회 동안 Y축 진동 수", tm ? tm.Ny : null, "회"),
+      L("계산 시간 (패턴 반복 횟수)", p.cycles, "cyc"),
+      L("계산 시간 = 반복 횟수 × 1/gcd", (sim.truncated ? sim.Tcalc : sim.T) * 1e3, "ms", ST.t),
+      L("레이저 펄스 간격", p.laser_us, "µs"), L("펄스 수 (광원당)", N, "개", ST.int),
+      L("수광면 거리 (미러 중심 기준)", p.screen_mm, "mm"), L("빔 지름", p.beam_d, "mm"),
+      [],
+      sec(`광원 배치 (미러 중심 구 위, R = ${SRC_R.toFixed(3)} mm, 빔은 미러 중심을 향함)`),
+      L("LD2 각도 θ2 (z축 기준)", p.th2, "°"), L("LD1·LD3 각도 θ13 (z축 기준)", p.th13, "°"),
+      L("LD1–LD2 사이각 α12", p.a12, "°"), L("LD3–LD2 사이각 α32", p.a32, "°"),
+      [],
+      ["광원", "X [mm]", "Y [mm]", "Z [mm]", "방향 dx", "방향 dy", "방향 dz", "z축 기준 각 [°]", "방위 [°]"].map((h) => ({ v: h, s: ST.head })),
+      ...geo.sources.map((s) => [s.name, { v: s.pos[0], s: ST.d3 }, { v: s.pos[1], s: ST.d3 }, { v: s.pos[2], s: ST.d3 },
+        { v: s.dir[0], s: ST.d6 }, { v: s.dir[1], s: ST.d6 }, { v: s.dir[2], s: ST.d6 }, { v: s.polar ?? NaN, s: ST.d3 }, { v: s.az ?? NaN, s: ST.d3 }]),
+      [],
+      sec("결과 요약"),
+      L("x 최소", sum.umin, "mm"), L("x 최대", sum.umax, "mm"), L("y 최소", sum.vmin, "mm"), L("y 최대", sum.vmax, "mm"),
+      ...sum.per.map((x, k) => L(`${names[k]} 최대 입사각`, x.incMax, "°", ST.d1)),
+      ...sum.per.map((x, k) => L(`${names[k]} 빔 손실 펄스 비율`, x.clippedPct ?? "계산 끔", x.clippedPct === null ? "" : "%", ST.d1)),
+      ...sum.per.map((x, k) => L(`${names[k]} 최소 반사율`, x.fmin === null ? "계산 끔" : x.fmin * 100, x.fmin === null ? "" : "%", ST.d1)),
+      L("유효 점 (3 광원 합)", sum.validN, "개", ST.int), L("무효 점 (미러 이탈·판 밖)", sum.bad, "개", ST.int),
+    ];
+    if (sim.truncated) info.push([], [{ v: `펄스 수 상한(${N.toLocaleString()}개)에 걸려 앞쪽 ${(sim.Tcalc * 1e3).toFixed(3)} ms만 계산했습니다.`, s: ST.muted }]);
+    return writeXlsx([
+      { name: "결과", rows: resRows(), cols: [8, 12, 10, 10, ...Array(2 * nS).fill(11), ...Array(nS).fill(13)], colStyle, freeze: true },
+      { name: "조건·요약", rows: info, cols: [34, 14, 10, 12, 11, 11, 11, 15, 10] },
+    ]);
+  }
+
+  return { DEG, MODES, DEFAULT_PARAMS, DEFAULT_LAYOUT, LAYOUT_KEYS, SRC_R, defaultGeometry, layoutGeometry, gcdHz, timing,
+           simulate, summary, repeatPeriod, csvText, xyzText, fractionConcentric, findOverlaps, overlapShapeText, retraceTime,
+           resultsXlsx, writeXlsx, XLSX_STYLE: ST };
+})();
+
+
+</script>
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const SPEC = [
+    { k: "Ax", label: "X축 진폭", sym: "Ax", unit: "°", min: 0, max: 30, step: 0.1, g: "drive" },
+    { k: "Ay", label: "Y축 진폭", sym: "Ay", unit: "°", min: 0, max: 30, step: 0.1, g: "drive" },
+    { k: "fx", label: "X축 주파수", sym: "fx", unit: "Hz", min: 100, max: 10000, step: 1, g: "drive" },
+    { k: "fy", label: "Y축 주파수", sym: "fy", unit: "Hz", min: 100, max: 10000, step: 1, g: "drive" },
+    { k: "phx", label: "X축 위상", sym: "φx", unit: "°", min: -180, max: 180, step: 1, g: "drive" },
+    { k: "phy", label: "Y축 위상", sym: "φy", unit: "°", min: -180, max: 180, step: 1, g: "drive" },
+    { k: "cycles", label: "계산 시간 (패턴 반복 횟수)", sym: "N", unit: "cyc", min: 0.1, max: 20, step: 0.1, g: "range" },
+    { k: "laser_us", label: "레이저 펄스 간격", sym: "Δt", unit: "µs", min: 0.5, max: 50, step: 0.5, g: "range" },
+    { k: "screen_mm", label: "수광면 거리 (미러 중심 기준)", sym: "L", unit: "mm", min: 10, max: 500, step: 1, g: "range" },
+    { k: "beam_d", label: "빔 지름 (0 = 손실 계산 끔)", sym: "Øb", unit: "mm", min: 0, max: 6, step: 0.1, g: "range" },
+    { k: "th2", label: "LD2 각도 (z축 기준)", sym: "θ2", unit: "°", min: 1, max: 89, step: 0.01, g: "layout" },
+    { k: "th13", label: "LD1·LD3 각도 (z축 기준)", sym: "θ13", unit: "°", min: 1, max: 89, step: 0.01, g: "layout" },
+    { k: "a12", label: "LD1–LD2 사이각 (미러 중심 기준)", sym: "α12", unit: "°", min: 0, max: 120, step: 0.01, g: "layout" },
+    { k: "a32", label: "LD3–LD2 사이각 (미러 중심 기준)", sym: "α32", unit: "°", min: 0, max: 120, step: 0.01, g: "layout" },
+  ];
+  const LAYOUT = new Set(MEMS.LAYOUT_KEYS);
+  const showVal = (k, v) => (LAYOUT.has(k) ? +(+v).toFixed(4) : v);   // 배치 각도는 소수 4자리까지만 보여 줌 (계산은 원래 값)
+  const POSITIVE = new Set(["fx", "fy", "cycles", "laser_us", "screen_mm"]);
+  const STORE_KEY = "mems-scan-sim:v2";      // v2: cycles = 패턴 반복 횟수, 광원 배치 각도 추가
+
+  let params = { ...MEMS.DEFAULT_PARAMS };
+  try { const saved = JSON.parse(localStorage.getItem(STORE_KEY) || "null"); if (saved) params = { ...params, ...saved }; } catch (e) {}
+  let layoutOk = MEMS.layoutGeometry(params);
+  if (layoutOk.error) { params = { ...params, ...MEMS.DEFAULT_LAYOUT }; layoutOk = MEMS.layoutGeometry(params); }
+  let geo = layoutOk.geo, layoutLim = layoutOk.lim;
+  let colorMode = "time";
+  let sim = null, sum = null, tIndex = 0, playing = false;
+  const view = { yaw: -40, pitch: 24 };
+  let map2 = null;
+  const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const fmt = (x, d = 1) => (Number.isFinite(x) ? x.toFixed(d).replace("-", "−") : "—");
+
+  /* ---------- controls ---------- */
+  const inputs = {};
+  for (const s of SPEC) {
+    const box = document.createElement("div");
+    box.className = "ctl";
+    box.innerHTML = `<label for="${s.k}-n"><span>${s.label}</span><span class="sym">${s.sym}</span></label>
+      <div class="ctl-in"><input type="range" id="${s.k}-r" min="${s.min}" max="${s.max}" step="${s.step}" aria-label="${s.label}">
+      <input type="number" id="${s.k}-n" step="${s.step}" inputmode="decimal"><span class="unit">${s.unit}</span></div>`;
+    if (s.k === "fy") box.insertAdjacentHTML("beforeend", '<div class="calc" id="gcd-read" aria-live="polite"></div>');
+    if (s.k === "cycles") box.insertAdjacentHTML("beforeend", '<div class="calc" id="time-read" aria-live="polite"></div>');
+    $("#grp-" + s.g).appendChild(box);
+    const r = box.querySelector('input[type="range"]'), n = box.querySelector('input[type="number"]');
+    inputs[s.k] = { r, n, s };
+    r.addEventListener("input", () => { n.value = r.value; n.classList.remove("bad"); params[s.k] = +r.value; schedule(); });
+    n.addEventListener("input", () => {
+      const v = parseFloat(n.value);
+      const bad = !Number.isFinite(v) || (POSITIVE.has(s.k) && v <= 0) || (s.k === "beam_d" && v < 0);
+      n.classList.toggle("bad", bad);
+      if (bad) return;
+      if (v > +r.max) r.max = v;
+      if (v < +r.min) r.min = v;
+      r.value = v; params[s.k] = v; schedule();
+    });
+  }
+  function syncInputs() {
+    for (const k in inputs) {
+      const { r, n } = inputs[k], v = params[k];
+      if (v > +r.max) r.max = v;
+      if (v < +r.min) r.min = v;
+      r.value = v; n.value = showVal(k, v); n.classList.remove("bad");
+    }
+    document.querySelector(`input[name="mode"][value="${params.mode}"]`).checked = true;
+  }
+  document.querySelectorAll('input[name="mode"]').forEach((el) => el.addEventListener("change", () => { params.mode = el.value; schedule(); }));
+  document.querySelectorAll('input[name="color"]').forEach((el) => el.addEventListener("change", () => { colorMode = el.value; draw2D(); }));
+  $("#reset").addEventListener("click", () => { params = { ...MEMS.DEFAULT_PARAMS }; syncInputs(); schedule(); });   // 광원 배치 각도까지 모두 기본값
+  $("#layout-reset").addEventListener("click", () => { params = { ...params, ...MEMS.DEFAULT_LAYOUT }; syncInputs(); schedule(); });
+
+  /* ---------- compute ---------- */
+  let pending = false;
+  function schedule() { if (pending) return; pending = true; requestAnimationFrame(() => { pending = false; recompute(); }); }
+  function renderTiming() {
+    const tm = MEMS.timing(params);
+    const g = (x) => +(+x).toPrecision(6);
+    const gr = $("#gcd-read"), tr = $("#time-read");
+    if (!tm) { gr.className = "calc err"; gr.textContent = "주파수를 확인하세요"; tr.textContent = ""; return; }
+    gr.className = "calc";
+    gr.innerHTML = `gcd(fx, fy) = <b>${g(tm.G)} Hz</b><br>패턴 1회 = 1/gcd = <b>${g(tm.Tp * 1e3)} ms</b> (X ${g(tm.Nx)}회 · Y ${g(tm.Ny)}회)`;
+    const dt = params.laser_us * 1e-6, n = Math.floor(tm.T / dt + 1e-9) + 1;
+    const over = n > 400000;
+    tr.className = over ? "calc warn" : "calc";
+    tr.innerHTML = `${g(params.cycles)} cyc × ${g(tm.Tp * 1e3)} ms = <b>${g(tm.T * 1e3)} ms</b> · 펄스 ${n.toLocaleString()}개` +
+      (over ? `<br>펄스 상한 400,000개 → 앞쪽 ${g(399999 * dt * 1e3)} ms만 계산` : "");
+  }
+  function applyLayout() {
+    const lg = MEMS.layoutGeometry(params);
+    MEMS.LAYOUT_KEYS.forEach((k) => inputs[k].n.classList.remove("bad"));
+    layoutLim = lg.lim;
+    if (lg.error) {
+      $("#layoutmsg").innerHTML = `<p class="msg err">${lg.error}</p>`;
+      if (lg.bad) inputs[lg.bad].n.classList.add("bad");
+      renderGeo();
+      return false;
+    }
+    $("#layoutmsg").innerHTML = "";
+    geo = lg.geo;
+    renderGeo();
+    return true;
+  }
+  function recompute() {
+    renderTiming();
+    if (!applyLayout()) return;
+    sim = MEMS.simulate(params, geo);
+    sum = MEMS.summary(sim);
+    const tc = $("#tcur");
+    tc.max = sim.N - 1;
+    tIndex = Math.min(tIndex, sim.N - 1);
+    tc.value = tIndex;
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(params)); } catch (e) {}
+    renderStats(); draw2D(); draw3D(); renderTime(); scheduleOverlapCounts();
+  }
+
+  function renderStats() {
+    const p = sim.params, rp = sum.repeat;
+    const clipMax = Math.max(...sum.per.map((x) => x.clippedPct ?? 0));
+    const fmin = Math.min(...sum.per.map((x) => x.fmin ?? 1));
+    const tiles = [
+      ["수광면 X 범위", `${fmt(sum.umin)} ~ ${fmt(sum.umax)} mm`, `폭 ${fmt(sum.umax - sum.umin)} mm`],
+      ["수광면 Y 범위", `${fmt(sum.vmin)} ~ ${fmt(sum.vmax)} mm`, `높이 ${fmt(sum.vmax - sum.vmin)} mm`],
+      ["패턴 1회 완성", rp ? `${+(rp * 1e3).toPrecision(6)} ms` : "—",
+        sim.timing ? `gcd ${+sim.timing.G.toPrecision(6)} Hz · X ${+sim.timing.Nx.toPrecision(6)}회 · Y ${+sim.timing.Ny.toPrecision(6)}회` : "주파수 확인"],
+      ["최대 입사각", sum.per.map((x) => fmt(x.incMax)).join(" / ") + "°", sum.per.map((x) => x.name.split(" ")[0]).join(" / ")],
+      ["빔 손실", p.beam_d > 0 ? `${sum.per.map((x) => fmt(x.clippedPct)).join(" / ")} %` : "계산 끔",
+        p.beam_d > 0 ? `손실 펄스 비율 · 최소 반사 ${fmt(fmin * 100, 0)}%` : "빔 지름 0",
+        p.beam_d > 0 ? (clipMax > 0 ? ["warn", "손실 있음"] : ["ok", "없음"]) : null],
+      ["유효 / 무효 점", `${sum.validN.toLocaleString()} / ${sum.bad.toLocaleString()}`,
+        `${sim.N.toLocaleString()} 펄스 × ${sim.sources.length} 광원 · ${+(p.cycles).toPrecision(6)} cyc` + (sim.truncated ? " (펄스 상한)" : ""),
+        sum.bad > 0 ? ["err", "판 밖·미러 이탈"] : sim.truncated ? ["warn", "상한 도달"] : null],
+    ];
+    $("#stats").innerHTML = tiles.map(([k, v, s, pill]) =>
+      `<div class="stat"><div class="k">${k}${pill ? `<span class="pill ${pill[0]}">${pill[1]}</span>` : ""}</div><div class="v" title="${v}">${v}</div><div class="s">${s}</div></div>`).join("");
+  }
+
+  /* ---------- colors ---------- */
+  const hexToRgb = (h) => { const m = h.replace("#", ""); const n = parseInt(m.length === 3 ? m.split("").map((c) => c + c).join("") : m, 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+  const clamp01 = (x) => Math.min(1, Math.max(0, x));
+  const jet = (x) => [clamp01(1.5 - Math.abs(4 * x - 3)) * 255, clamp01(1.5 - Math.abs(4 * x - 2)) * 255, clamp01(1.5 - Math.abs(4 * x - 1)) * 255];
+  const JET = Array.from({ length: 256 }, (_, i) => jet(i / 255));
+  const lossStops = () => [hexToRgb(css("--err")), hexToRgb(css("--warn")), [140, 152, 170]];
+  function lossColor(x, stops) { // x: 0 (worst) -> 1 (no loss)
+    const a = x < 0.5 ? stops[0] : stops[1], b = x < 0.5 ? stops[1] : stops[2], f = x < 0.5 ? x * 2 : (x - 0.5) * 2;
+    return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+  }
+  const srcColor = (k) => css(`--src${(k % 3) + 1}`);
+
+  function niceStep(span, target) {
+    const raw = span / target, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
+    return (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10) * p;
+  }
+
+  /* ---------- 2D screen plot ---------- */
+  function draw2D() {
+    if (!sim) return;
+    const cv = $("#plot"), dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const W = cv.parentElement.clientWidth - 24;
+    const L = 52, R = 14, T = 12, B = 34;
+    // 보이는 광원만으로 축 범위 (한 광원만 고르면 그 광원에 맞춰 확대)
+    let umin = Infinity, umax = -Infinity, vmin = Infinity, vmax = -Infinity;
+    sim.sources.forEach((src, k) => {
+      if (!shown(k)) return;
+      for (let i = 0; i < sim.N; i++) if (src.valid[i]) {
+        if (src.u[i] < umin) umin = src.u[i]; if (src.u[i] > umax) umax = src.u[i];
+        if (src.v[i] < vmin) vmin = src.v[i]; if (src.v[i] > vmax) vmax = src.v[i];
+      }
+    });
+    if (!Number.isFinite(umin)) { umin = -1; umax = 1; vmin = -1; vmax = 1; }
+    const pu = (umax - umin || 1) * 0.04, pv = (vmax - vmin || 1) * 0.04;
+    umin -= pu; umax += pu; vmin -= pv; vmax += pv;
+    const pw = Math.max(W - L - R, 100);
+    const ph = Math.min(Math.max(pw * (vmax - vmin) / (umax - umin), 220), Math.max(320, window.innerHeight * 0.62));
+    const s = Math.min(pw / (umax - umin), ph / (vmax - vmin));
+    const uc = (umin + umax) / 2, vc = (vmin + vmax) / 2;
+    const H = ph + T + B;
+    cv.style.height = H + "px";
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    const X = (u) => L + pw / 2 + (u - uc) * s, Y = (v) => T + ph / 2 - (v - vc) * s;
+    map2 = { X, Y, L, T, pw, ph, s, uc, vc };
+    const ctx = cv.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = css("--plot"); ctx.fillRect(0, 0, W, H);
+
+    // grid + ticks
+    const u0 = uc - pw / 2 / s, u1 = uc + pw / 2 / s, v0 = vc - ph / 2 / s, v1 = vc + ph / 2 / s;
+    const st = niceStep(Math.max(u1 - u0, v1 - v0), 8);
+    ctx.strokeStyle = css("--grid"); ctx.lineWidth = 1; ctx.fillStyle = css("--muted");
+    ctx.font = `11px ${css("--f-mono")}`;
+    ctx.textAlign = "center"; ctx.textBaseline = "top";
+    for (let u = Math.ceil(u0 / st) * st; u <= u1; u += st) {
+      const x = Math.round(X(u)) + 0.5; ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, T + ph); ctx.stroke();
+      ctx.fillText(fmt(u, st < 1 ? 1 : 0), x, T + ph + 6);
+    }
+    ctx.textAlign = "right"; ctx.textBaseline = "middle";
+    for (let v = Math.ceil(v0 / st) * st; v <= v1; v += st) {
+      const y = Math.round(Y(v)) + 0.5; ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(L + pw, y); ctx.stroke();
+      ctx.fillText(fmt(v, st < 1 ? 1 : 0), L - 6, y);
+    }
+    ctx.strokeStyle = css("--line"); ctx.strokeRect(L + 0.5, T + 0.5, pw, ph);
+    ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+    ctx.fillText("x [mm]", L + pw / 2, H - 1);
+    ctx.save(); ctx.translate(11, T + ph / 2); ctx.rotate(-Math.PI / 2); ctx.textBaseline = "middle"; ctx.fillText("y [mm]", 0, 0); ctx.restore();
+
+    // points via ImageData (fast for 100k+ points)
+    const off = document.createElement("canvas");
+    off.width = cv.width; off.height = cv.height;
+    const octx = off.getContext("2d");
+    const img = octx.createImageData(off.width, off.height), px = img.data, Wd = off.width, Hd = off.height;
+    const dot = Math.max(2, Math.round(1.7 * dpr));
+    const tmax = sim.t[sim.N - 1] || 1;
+    const stops = lossStops();
+    let fmin = 1;
+    if (colorMode === "clip") sim.sources.forEach((src) => { if (src.frac) for (let i = 0; i < sim.N; i++) if (src.valid[i] && src.frac[i] < fmin) fmin = src.frac[i]; });
+    const flo = Math.min(Math.floor(fmin * 100) / 100, 0.99);
+    sim.sources.forEach((src, k) => {
+      if (!shown(k)) return;
+      const sc = hexToRgb(srcColor(k));
+      for (let i = 0; i < sim.N; i++) {
+        if (!src.valid[i]) continue;
+        const x0 = Math.round(X(src.u[i]) * dpr - dot / 2), y0 = Math.round(Y(src.v[i]) * dpr - dot / 2);
+        let c;
+        if (colorMode === "time") c = JET[Math.round((sim.t[i] / tmax) * 255)];
+        else if (colorMode === "clip" && src.frac) c = lossColor(clamp01((src.frac[i] - flo) / (1 - flo)), stops);
+        else c = sc;
+        for (let yy = y0; yy < y0 + dot; yy++) {
+          if (yy < 0 || yy >= Hd) continue;
+          for (let xx = x0; xx < x0 + dot; xx++) {
+            if (xx < 0 || xx >= Wd) continue;
+            const o = (yy * Wd + xx) * 4; px[o] = c[0]; px[o + 1] = c[1]; px[o + 2] = c[2]; px[o + 3] = 255;
+          }
+        }
+      }
+    });
+    octx.putImageData(img, 0, 0);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(off, 0, 0);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // 교차점(겹침): 광원마다 그 광원 자신의 경로끼리 교차한 점만, 광원 색 ×
+    ovNote = "";
+    if ($("#ov-show").checked) {
+      const ov = overlaps();
+      const ink = css("--ink"), r = 4;
+      ov.sources.forEach((s, k) => {
+        if (!shown(k)) return;
+        for (let q = 0; q < s.u.length; q++) {
+          const x = X(s.u[q]), y = Y(s.v[q]);
+          ctx.beginPath(); ctx.moveTo(x - r, y - r); ctx.lineTo(x + r, y + r); ctx.moveTo(x - r, y + r); ctx.lineTo(x + r, y - r);
+          ctx.lineCap = "round"; ctx.lineWidth = 3.4; ctx.strokeStyle = ink; ctx.stroke();
+          ctx.lineWidth = 1.8; ctx.strokeStyle = srcColor(k); ctx.stroke();
+        }
+      });
+      ovNote = "× 자기 교차점 " + ov.sources.map((s, k) => (shown(k) ? `${s.name.split(" ")[0]} ${s.ta.length}개` : null)).filter(Boolean).join(" · ") +
+        (ov.shape === "retrace" ? " (왕복 경로: 경로 전체가 겹침)" : "");
+    }
+    // keep a copy without the cursor so moving the time cursor only redraws the rings
+    base2 = document.createElement("canvas");
+    base2.width = cv.width; base2.height = cv.height;
+    base2.getContext("2d").drawImage(cv, 0, 0);
+    map2.flo = flo; map2.dpr = dpr;
+    drawCursor2D(ctx);
+    renderLegend(flo);
+  }
+  let base2 = null;
+  function redrawCursor2D() {
+    if (!base2 || !map2) return draw2D();
+    const ctx = $("#plot").getContext("2d");
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(base2, 0, 0);
+    ctx.setTransform(map2.dpr, 0, 0, map2.dpr, 0, 0);
+    drawCursor2D(ctx);
+  }
+  function drawCursor2D(ctx) {
+    sim.sources.forEach((src, k) => {
+      if (!src.valid[tIndex] || !shown(k)) return;
+      ctx.beginPath(); ctx.arc(map2.X(src.u[tIndex]), map2.Y(src.v[tIndex]), 7, 0, Math.PI * 2);
+      ctx.lineWidth = 2.5; ctx.strokeStyle = css("--plot"); ctx.stroke();
+      ctx.lineWidth = 1.8; ctx.strokeStyle = srcColor(k); ctx.stroke();
+    });
+  }
+  function renderLegend(flo) {
+    const lg = $("#legend");
+    if (colorMode === "time") {
+      const stops = Array.from({ length: 9 }, (_, i) => `rgb(${jet(i / 8).map(Math.round).join(",")})`).join(",");
+      lg.innerHTML = `<span>0 ms</span><span class="ramp" style="background:linear-gradient(90deg,${stops})"></span><span>${fmt(sim.t[sim.N - 1] * 1e3, 3)} ms</span><span>펄스 발사 시각</span>`;
+    } else if (colorMode === "clip" && sim.params.beam_d > 0) {
+      const st = lossStops().map((c) => `rgb(${c.join(",")})`).join(",");
+      lg.innerHTML = `<span>${fmt(flo * 100, 0)}%</span><span class="ramp" style="background:linear-gradient(90deg,${st})"></span><span>100%</span><span>미러가 받는 빔 비율 (빔 Ø${params.beam_d} mm)</span>`;
+    } else {
+      lg.innerHTML = sim.sources.map((s, k) => (shown(k) ? `<span class="chip"><i style="background:${srcColor(k)}"></i>${s.name}</span>` : "")).join("") +
+        (colorMode === "clip" ? "<span>· 빔 지름이 0이라 손실 대신 광원 색으로 표시</span>" : "");
+    }
+    if (ovNote) lg.insertAdjacentHTML("beforeend", `<span style="color:var(--ink)">${ovNote}</span>`);
+  }
+
+  /* ---------- 광원 선택 / 겹침(교차점) ---------- */
+  let srcSel = "all", ovNote = "", ovCache = null, ovKey = "", geoVersion = 0;
+  const shown = (k) => srcSel === "all" || srcSel === String(k);
+  function buildSrcSeg() {
+    const n = geo.sources.length;
+    if (srcSel !== "all" && +srcSel >= n) srcSel = "all";
+    const opts = [["all", "전체"]].concat(geo.sources.map((s, k) => [String(k), s.name.split(" ")[0]]));
+    $("#srcseg").innerHTML = opts.map(([v, lab]) =>
+      `<input type="radio" name="srcsel" id="src-${v}" value="${v}"${v === srcSel ? " checked" : ""}><label for="src-${v}">${lab}</label>`).join("");
+    document.querySelectorAll('input[name="srcsel"]').forEach((el) => el.addEventListener("change", () => { srcSel = el.value; draw2D(); markOvTiles(); }));
+  }
+
+  /* 광원별 자기 교차점 개수 칸 (값을 바꿀 때마다 잠시 뒤 계산해서 갱신) */
+  let ovTimer = null;
+  function scheduleOverlapCounts() {
+    clearTimeout(ovTimer);
+    const on = $("#ov-show").checked;            // '교차점 표시'를 켰을 때만 개수 칸을 보여주고 계산
+    $("#ovcard").hidden = !on;
+    if (!on) return;
+    $("#ovgrid").classList.add("busy");
+    if (!$("#ovgrid").children.length) $("#ovgrid").innerHTML = `<p class="note" style="margin:0">계산 중…</p>`;
+    clearTimeout(ovTimer);
+    ovTimer = setTimeout(renderOverlapCounts, 120);
+  }
+  function renderOverlapCounts() {
+    if (!$("#ov-show").checked) return;
+    const ov = overlaps();
+    const g = $("#ovgrid");
+    g.classList.remove("busy");
+    g.innerHTML = ov.sources.map((s, k) => {
+      const passes = s.occ.reduce((a, o) => a + o.length, 0);
+      const minAng = s.angle.length ? Math.min(...s.angle) : null;
+      const sub = s.ta.length ? `통과 ${passes.toLocaleString()}회 · 최소 교차각 ${fmt(minAng, 1)}°` : "교차점 없음";
+      return `<button type="button" class="ovtile" data-k="${k}" aria-pressed="false" title="${s.name}만 표시">
+        <span class="nm"><i style="background:${srcColor(k)}"></i>${s.name.split(" ")[0]}</span>
+        <span class="cnt">${s.ta.length.toLocaleString()}<small>개</small></span>
+        <span class="sub">${sub}</span></button>`;
+    }).join("");
+    const shapePill = { closed: ["ok", "닫힌 경로"], retrace: ["warn", "왕복 경로"], open: ["warn", "열린 경로"], static: ["err", "정지"] }[ov.shape];
+    const detail = ov.shape === "closed" ? `한 주기 ${fmt(ov.Tp * 1e3, 3)} ms 기준 · 계산 시간 안에 ${+(ov.T / ov.Tp).toPrecision(3)}회 반복`
+      : ov.shape === "retrace" ? "반 주기마다 같은 길을 되짚어 가서 경로 전체가 겹침 · 교차점은 편도 기준"
+      : ov.shape === "open" ? `계산 시간 ${fmt(ov.T * 1e3, 3)} ms 안에서 패턴이 닫히지 않음` : "미러가 움직이지 않음";
+    $("#ov-shape").innerHTML = `<span class="pill ${shapePill[0]}">${shapePill[1]}</span>${detail}`;
+    g.querySelectorAll(".ovtile").forEach((b) => b.addEventListener("click", () => {
+      const k = b.dataset.k;
+      srcSel = srcSel === k ? "all" : k;                 // 같은 칸을 다시 누르면 전체로
+      const r = document.getElementById("src-" + srcSel); if (r) r.checked = true;
+      $("#ov-show").checked = true;
+      draw2D(); markOvTiles();
+    }));
+    markOvTiles();
+  }
+  function markOvTiles() {
+    document.querySelectorAll(".ovtile").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.k === srcSel)));
+  }
+  function overlaps() {
+    const key = JSON.stringify(params) + "|" + geoVersion;
+    if (key !== ovKey) { ovCache = MEMS.findOverlaps(params, geo); ovKey = key; }
+    return ovCache;
+  }
+  $("#ov-show").addEventListener("change", () => { draw2D(); scheduleOverlapCounts(); });
+  $("#plot").addEventListener("pointermove", (e) => {
+    if (!map2) return;
+    const r = e.currentTarget.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+    if (x < map2.L || x > map2.L + map2.pw || y < map2.T || y > map2.T + map2.ph) { $("#hover").textContent = ""; return; }
+    const u = map2.uc + (x - map2.L - map2.pw / 2) / map2.s, v = map2.vc - (y - map2.T - map2.ph / 2) / map2.s;
+    $("#hover").textContent = `커서 위치  x = ${fmt(u, 2)} mm,  y = ${fmt(v, 2)} mm`;
+  });
+  $("#plot").addEventListener("pointerleave", () => { $("#hover").textContent = ""; });
+
+  /* ---------- 3D view (orthographic, z up) ---------- */
+  let proj3 = null;
+  function draw3D() {
+    if (!sim) return;
+    const cv = $("#view3"), dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const W = cv.parentElement.clientWidth - 24, H = Math.max(240, Math.min(W * 0.66, 440));
+    cv.style.height = H + "px"; cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = css("--plot"); ctx.fillRect(0, 0, W, H);
+
+    const S = sim.S, eu = sim.eu, ev = sim.ev;
+    const umin = Number.isFinite(sum.umin) ? sum.umin : -10, umax = Number.isFinite(sum.umax) ? sum.umax : 10;
+    const vmin = Number.isFinite(sum.vmin) ? sum.vmin : -10, vmax = Number.isFinite(sum.vmax) ? sum.vmax : 10;
+    const onScreen = (a, b) => [S[0] + a * eu[0] + b * ev[0], S[1] + a * eu[1] + b * ev[1], S[2] + a * eu[2] + b * ev[2]];
+    const rect = [onScreen(umin, vmin), onScreen(umax, vmin), onScreen(umax, vmax), onScreen(umin, vmax)];
+    const scene = [...rect, geo.mirrorCenter, ...geo.sources.map((s) => s.pos)];
+    const cen = [0, 1, 2].map((j) => (Math.min(...scene.map((p) => p[j])) + Math.max(...scene.map((p) => p[j]))) / 2);
+    const cy = Math.cos(view.yaw * MEMS.DEG), sy = Math.sin(view.yaw * MEMS.DEG), cp = Math.cos(view.pitch * MEMS.DEG), sp = Math.sin(view.pitch * MEMS.DEG);
+    const P0 = (p) => { const x = p[0] - cen[0], y = p[1] - cen[1], z = p[2] - cen[2]; const x1 = cy * x - sy * y, y1 = sy * x + cy * y; return [x1, z * cp + y1 * sp]; };
+    const pr = scene.map(P0);
+    const span = Math.max(Math.max(...pr.map((p) => p[0])) - Math.min(...pr.map((p) => p[0])), (Math.max(...pr.map((p) => p[1])) - Math.min(...pr.map((p) => p[1]))) * W / H, 1);
+    const k = (W - 40) / span;
+    const mx = (Math.max(...pr.map((p) => p[0])) + Math.min(...pr.map((p) => p[0]))) / 2, my = (Math.max(...pr.map((p) => p[1])) + Math.min(...pr.map((p) => p[1]))) / 2;
+    const P = (p) => { const q = P0(p); return [W / 2 + (q[0] - mx) * k, H / 2 - (q[1] - my) * k]; };
+    proj3 = { P, span: Math.hypot(umax - umin, vmax - vmin) };
+
+    // screen patch
+    ctx.beginPath(); rect.forEach((p, i) => { const q = P(p); i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); }); ctx.closePath();
+    ctx.fillStyle = css("--grid"); ctx.globalAlpha = 0.55; ctx.fill(); ctx.globalAlpha = 1; ctx.strokeStyle = css("--line"); ctx.lineWidth = 1; ctx.stroke();
+    // trails
+    const step = Math.max(1, Math.ceil(sim.N / 3000));
+    sim.sources.forEach((src, si) => {
+      ctx.fillStyle = srcColor(si); ctx.globalAlpha = 0.5;
+      for (let i = 0; i < sim.N; i += step) { if (!src.valid[i]) continue; const q = P([src.Px[i], src.Py[i], src.Pz[i]]); ctx.fillRect(q[0] - 0.8, q[1] - 0.8, 1.6, 1.6); }
+    });
+    ctx.globalAlpha = 1;
+    // axis triad at mirror
+    const L3 = Math.max(proj3.span * 0.06, 10), o = P(geo.mirrorCenter);
+    ctx.font = `11px ${css("--f-mono")}`; ctx.fillStyle = css("--muted"); ctx.strokeStyle = css("--muted"); ctx.lineWidth = 1;
+    [[1, 0, 0, "x"], [0, 1, 0, "y"], [0, 0, 1, "z"]].forEach(([a, b, c, lab]) => {
+      const e = P([geo.mirrorCenter[0] + a * L3, geo.mirrorCenter[1] + b * L3, geo.mirrorCenter[2] + c * L3]);
+      ctx.beginPath(); ctx.moveTo(o[0], o[1]); ctx.lineTo(e[0], e[1]); ctx.stroke(); ctx.fillText(lab, e[0] + 3, e[1] - 3);
+    });
+    // rays at cursor
+    sim.sources.forEach((src, si) => {
+      const i = tIndex, a = P(geo.sources[si].pos), h = [src.Hx[i], src.Hy[i], src.Hz[i]];
+      if (!h.every(Number.isFinite)) return;
+      const end = src.valid[i] ? [src.Px[i], src.Py[i], src.Pz[i]] : [h[0] + src.rx[i] * L3 * 3, h[1] + src.ry[i] * L3 * 3, h[2] + src.rz[i] * L3 * 3];
+      const hb = P(h), e = P(end);
+      ctx.strokeStyle = srcColor(si); ctx.lineWidth = 1.6; ctx.setLineDash(src.valid[i] ? [] : [4, 3]);
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(hb[0], hb[1]); ctx.lineTo(e[0], e[1]); ctx.stroke(); ctx.setLineDash([]);
+      if (src.valid[i]) { ctx.beginPath(); ctx.arc(e[0], e[1], 4, 0, Math.PI * 2); ctx.fillStyle = srcColor(si); ctx.fill(); }
+      ctx.beginPath(); ctx.arc(a[0], a[1], 4.5, 0, Math.PI * 2); ctx.fillStyle = srcColor(si); ctx.fill();
+      ctx.fillStyle = css("--ink"); ctx.fillText(geo.sources[si].name.split(" ")[0], a[0] + 7, a[1] - 5);
+    });
+    // mirror disc (drawn enlarged for visibility) + normal
+    const n = [sim.nx[tIndex], sim.ny[tIndex], sim.nz[tIndex]];
+    const a0 = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+    const e1 = (() => { const c = [n[1] * a0[2] - n[2] * a0[1], n[2] * a0[0] - n[0] * a0[2], n[0] * a0[1] - n[1] * a0[0]]; const m = Math.hypot(...c); return c.map((x) => x / m); })();
+    const e2 = [n[1] * e1[2] - n[2] * e1[1], n[2] * e1[0] - n[0] * e1[2], n[0] * e1[1] - n[1] * e1[0]];
+    const Rm = Math.max(geo.mirrorRadius, L3 * 0.35), mc = geo.mirrorCenter;
+    ctx.beginPath();
+    for (let j = 0; j <= 40; j++) { const t = (j / 40) * 2 * Math.PI; const q = P([mc[0] + Rm * (Math.cos(t) * e1[0] + Math.sin(t) * e2[0]), mc[1] + Rm * (Math.cos(t) * e1[1] + Math.sin(t) * e2[1]), mc[2] + Rm * (Math.cos(t) * e1[2] + Math.sin(t) * e2[2])]); j ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); }
+    ctx.fillStyle = css("--panel"); ctx.fill(); ctx.strokeStyle = css("--ink"); ctx.lineWidth = 1.2; ctx.stroke();
+    const tip = P([mc[0] + n[0] * L3 * 1.6, mc[1] + n[1] * L3 * 1.6, mc[2] + n[2] * L3 * 1.6]);
+    ctx.strokeStyle = css("--normal"); ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(o[0], o[1]); ctx.lineTo(tip[0], tip[1]); ctx.stroke();
+    ctx.beginPath(); ctx.arc(tip[0], tip[1], 3.5, 0, Math.PI * 2); ctx.fillStyle = css("--normal"); ctx.fill();
+    ctx.fillStyle = css("--muted"); ctx.fillText("미러 법선", tip[0] + 6, tip[1] + 3);
+  }
+  (() => {
+    const cv = $("#view3"); let drag = null;
+    cv.addEventListener("pointerdown", (e) => { drag = [e.clientX, e.clientY]; cv.setPointerCapture(e.pointerId); });
+    cv.addEventListener("pointermove", (e) => {
+      if (!drag) return;
+      view.yaw -= (e.clientX - drag[0]) * 0.4; view.pitch = Math.max(-89, Math.min(89, view.pitch + (e.clientY - drag[1]) * 0.4));
+      drag = [e.clientX, e.clientY]; draw3D();
+    });
+    const end = () => { drag = null; };
+    cv.addEventListener("pointerup", end); cv.addEventListener("pointercancel", end);
+  })();
+
+  /* ---------- time cursor ---------- */
+  function renderTime() {
+    const i = tIndex, D = MEMS.DEG;
+    $("#tread").textContent = `t = ${fmt(sim.t[i] * 1e3, 4)} ms   θx = ${fmt(sim.thx[i] / D, 2)}°   θy = ${fmt(sim.thy[i] / D, 2)}°`;
+    $("#tdetail").innerHTML = sim.sources.map((s, k) =>
+      `<dt><span class="chip"><i style="background:${srcColor(k)}"></i>${s.name.split(" ")[0]}</span></dt><dd>${s.valid[i] ? `(${fmt(s.u[i], 2)}, ${fmt(s.v[i], 2)}) mm` : "도달 안 함"} · 입사 ${fmt(s.inc[i], 1)}°${s.frac ? ` · 반사 ${fmt(s.frac[i] * 100, 0)}%` : ""}</dd>`).join("");
+  }
+  function setTime(i) {
+    tIndex = i; $("#tcur").value = i; renderTime(); draw3D(); redrawCursor2D();
+  }
+  $("#tcur").addEventListener("input", (e) => setTime(+e.target.value));
+  let last = 0;
+  function tick(ts) {
+    if (!playing) return;
+    if (ts - last > 30) { last = ts; const stepN = Math.max(1, Math.round(sim.N / 500)); setTime((tIndex + stepN) % sim.N); }
+    requestAnimationFrame(tick);
+  }
+  $("#play").addEventListener("click", () => {
+    playing = !playing; $("#play").textContent = playing ? "❚❚ 정지" : "▶ 재생";
+    if (playing) requestAnimationFrame(tick);
+  });
+
+  /* ---------- geometry (3rd_MU 고정 + 광원 배치 각도) ---------- */
+  function renderGeo() {
+    const v3 = (q, d = 2) => `(${q.map((x) => fmt(x, d)).join(", ")})`;
+    const lim = layoutLim ? `${fmt(layoutLim[0], 2)}° ~ ${fmt(layoutLim[1], 2)}°` : "—";
+    $("#geo").innerHTML = `<dt>미러</dt><dd>Ø5.50 mm · 중심 (0, 0, 0) · x축 기준 25° 기울기</dd>
+      ${geo.sources.map((s) => `<dt>${s.name.split(" ")[0]}</dt><dd>${v3(s.pos)} mm · z축 ${fmt(s.polar, 2)}° · 방위 ${fmt(s.az, 2)}°</dd>`).join("")}
+      <dt>가능한 α</dt><dd>${lim} (지금 θ2, θ13 기준)</dd>
+      <dt>수광판</dt><dd>z = L 평면 · 1000 × 1000 mm</dd>`;
+  }
+  function initSourceLists() {
+    $("#xyz-src").innerHTML = geo.sources.map((s, k) => `<option value="${k}">${s.name.split(" ")[0]}</option>`).join("");
+    buildSrcSeg();
+  }
+
+  /* ---------- export ---------- */
+  const framed = (() => { try { return window.self !== window.top; } catch (e) { return true; } })();
+  // file saving: the artifact viewer's downloads capability, or a plain browser download when self-hosted
+  let saver = null;
+  const showDl = (on) => { $("#csv-dl").hidden = !on; $("#xyz-dl").hidden = !on; };
+  if (!framed) { saver = { kind: "native" }; showDl(true); }
+  if (window.claude && typeof window.claude.use === "function") {
+    window.claude.use("downloads").then((ns) => { if (ns) { saver = { kind: "cap", ns }; showDl(true); } }).catch(() => {});
+  }
+  function say(html) { $("#expmsg").innerHTML = html; }
+  function copyText(text, what) {
+    const lines = text.split("\n").length - 1;
+    const fallback = () => {
+      say(`<p class="msg err">클립보드에 바로 넣지 못했습니다. 아래 칸을 전체 선택(Ctrl+A)해서 복사하세요.</p><textarea id="fallback" readonly></textarea>`);
+      const ta = $("#fallback"); ta.value = text; ta.focus(); ta.select();
+    };
+    try {
+      navigator.clipboard.writeText(text).then(() => say(`<p class="msg ok">${what} ${lines.toLocaleString()}줄을 복사했습니다.</p>`), fallback);
+    } catch (e) { fallback(); }
+  }
+  async function download(data, name, okText) {
+    const blob = data instanceof Blob ? data : new Blob([data], { type: "text/plain" });
+    const okMsg = okText || `${name}을 저장했습니다.`;
+    if (!saver) {
+      say(`<p class="msg err">이 화면에서는 파일로 저장할 수 없습니다. 이 HTML을 웹에 올리거나 PC에서 직접 열어 사용해 주세요.</p>`);
+      return;
+    }
+    if (saver.kind === "cap") {
+      try {
+        const r = await saver.ns.save({ filename: name, data: blob });
+        say(r && r.status === "saved" ? `<p class="msg ok">${okMsg}</p>` : "");
+      } catch (e) {
+        const c = e && e.code;
+        if (c === "declined") say(`<p class="msg err">저장을 취소했습니다.</p>`);
+        else if (c === "rate_limited") say(`<p class="msg err">다른 저장 확인 창이 열려 있습니다. 잠시 후 다시 눌러 주세요.</p>`);
+        else if (["unavailable", "not_granted", "capability_disabled", "capability_removed"].includes(c) || !c) {
+          showDl(false); saver = null;
+          say(`<p class="msg err">이 화면에서는 파일로 저장할 수 없습니다. 복사 버튼을 사용해 주세요.</p>`);
+        } else say(`<p class="msg err">저장하지 못했습니다 (${c}).</p>`);
+      }
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    say(`<p class="msg ok">${okMsg}</p>`);
+  }
+
+  /* ---------- 겹침 지점 엑셀 (외부 라이브러리 없이 MEMS.writeXlsx 로 만듦) ---------- */
+  function buildOverlapWorkbook(ov, sim) {
+    const S = MEMS.XLSX_STYLE, p = ov.params;
+    const H = (arr) => arr.map((h) => ({ v: h, s: S.head }));
+    const modeKo = { global: "전역 XY (COMSOL과 동일)", gimbal_xy: "짐벌 · X 바깥", gimbal_yx: "짐벌 · Y 바깥" };
+    const val = (v) => (typeof v === "number" ? { v, s: Number.isInteger(v) ? S.none : S.d3 } : v);
+
+    // 요약
+    const sum = [
+      [{ v: "MEMS 스캔 경로 겹침(교차점) 분석", s: S.title }],
+      [{ v: "같은 광원의 빔이 수광면의 같은 위치를 두 번 지나는 점(경로 자기 교차점)을 광원별로 구했습니다.", s: S.muted }],
+      [],
+      [{ v: "계산 조건", s: S.bold }],
+      H(["항목", "값", "단위"]),
+    ];
+    const cond = [
+      ["형상", geo.label, ""], ["회전축 정의", modeKo[p.mode] || p.mode, ""],
+      ["X축 진폭 Ax", p.Ax, "°"], ["Y축 진폭 Ay", p.Ay, "°"], ["X축 주파수 fx", p.fx, "Hz"], ["Y축 주파수 fy", p.fy, "Hz"],
+      ["X축 위상 φx", p.phx, "°"], ["Y축 위상 φy", p.phy, "°"], ["gcd(fx, fy)", MEMS.gcdHz(p.fx, p.fy) ?? "—", "Hz"],
+      ["계산 시간", ov.T * 1e3, "ms"], ["계산 시간 (패턴 반복 횟수)", p.cycles, "cyc"],
+      ["LD2 각도 θ2 (z축 기준)", p.th2, "°"], ["LD1·LD3 각도 θ13 (z축 기준)", p.th13, "°"],
+      ["LD1–LD2 사이각 α12", p.a12, "°"], ["LD3–LD2 사이각 α32", p.a32, "°"],
+      ["레이저 펄스 간격", p.laser_us, "µs"], ["수광면 거리 (미러 중심 기준)", p.screen_mm, "mm"],
+      ["패턴 1회 완성 시간 1/gcd(fx, fy)", ov.Tp ? ov.Tp * 1e3 : "닫히지 않음", "ms"],
+      ["경로 형태", MEMS.overlapShapeText(ov), ""],
+      ["교차점 탐색 구간", `${(ov.w0 * 1e3).toFixed(6)} ~ ${((ov.w0 + ov.Ta) * 1e3).toFixed(6)} ms`, ""],
+    ];
+    cond.forEach(([k, v, u]) => sum.push([k, val(v), u]));
+    sum.push([], [{ v: "광원별 결과", s: S.bold }], H(["광원", "교차점 수", "계산 시간 안 통과 횟수", "최소 교차각 [°]", "최대 잔차 [mm]"]));
+    ov.sources.forEach((s) => sum.push([s.name, s.ta.length, s.occ.reduce((a, o) => a + o.length, 0),
+      s.angle.length ? { v: Math.min(...s.angle), s: S.d1 } : null, s.resid.length ? { v: Math.max(...s.resid), s: S.sci } : null]));
+    const notes = [
+      "x, y : 수광면 2D 좌표 (전역 x, y와 같은 방향).  X, Y, Z : 3D 좌표.  단위 mm.",
+      "t1, t2 : 계산 시간 안에서 그 점을 처음 두 번 지나는 시각.  Δt = t2 − t1.",
+      "LD1, LD2, LD3 시트 : 각 광원 자신의 경로끼리 교차한 점만 담습니다 (다른 광원 경로와 만나는 점은 포함하지 않음).",
+      "통과시각 시트 : 계산 시간 안에서 그 점을 지나는 모든 시각과, 그 시각에 가장 가까운 레이저 펄스.",
+      "계산 시간이 패턴 1회(1 cyc)보다 길면 두 번째 반복부터는 경로 전체를 그대로 다시 지나갑니다.",
+      "레이저는 펄스 간격마다 점으로 찍히므로, 교차점 위에 실제 펄스가 찍히는지는 '펄스-교차점 거리'로 확인하세요.",
+      "교차각 : 두 번 지날 때의 진행 방향 사이 각도 (0~90°).  잔차 : 두 시각의 계산 위치 차이 (정밀도 확인용).",
+    ];
+    sum.push([], [{ v: "참고", s: S.bold }], ...notes.map((t) => [{ v: "• " + t, s: S.muted }]));
+    const sheets = [{ name: "요약", rows: sum, cols: [32, 24, 20, 16, 16] }];
+
+    // 광원별 교차점 표
+    ov.sources.forEach((s) => {
+      const rows = [H(["번호", "x [mm]", "y [mm]", "X [mm]", "Y [mm]", "Z [mm]", "t1 [ms]", "t2 [ms]", "Δt [ms]", "교차각 [°]", "통과 횟수"])];
+      s.ta.forEach((ta, q) => rows.push([q + 1, s.u[q], s.v[q], s.P[q][0], s.P[q][1], s.P[q][2], ta * 1e3, s.tb[q] * 1e3,
+        (s.tb[q] - ta) * 1e3, s.angle[q], s.occ[q].length]));
+      sheets.push({ name: s.name.split(" ")[0].slice(0, 31), rows, freeze: true, cols: [7, 11, 11, 11, 11, 11, 13, 13, 13, 10, 10],
+        colStyle: [S.int, S.d3, S.d3, S.d3, S.d3, S.d3, S.t, S.t, S.t, S.d1, S.int] });
+    });
+
+    // 통과시각 (모든 광원)
+    const dtl = p.laser_us * 1e-6, D = MEMS.DEG;
+    const trows = [H(["광원", "교차점 번호", "x [mm]", "y [mm]", "통과 순서", "시각 [ms]", "θx [°]", "θy [°]", "가까운 펄스 번호", "펄스 시각 [ms]", "펄스-교차점 거리 [mm]"])];
+    ov.sources.forEach((s, k) => {
+      const su = sim.sources[k].u, sv = sim.sources[k].v;
+      s.occ.forEach((times, q) => times.forEach((t, o) => {
+        const thx = p.Ax * Math.sin(2 * Math.PI * p.fx * t + p.phx * D), thy = p.Ay * Math.sin(2 * Math.PI * p.fy * t + p.phy * D);
+        const pi = Math.round(t / dtl);
+        const pv = pi >= 0 && pi < sim.N ? [pi, pi * dtl * 1e3, Math.hypot(su[pi] - s.u[q], sv[pi] - s.v[q])] : [null, null, null];
+        trows.push([s.name.split(" ")[0], q + 1, s.u[q], s.v[q], o + 1, t * 1e3, thx, thy, ...pv]);
+      }));
+    });
+    sheets.push({ name: "통과시각", rows: trows, freeze: true, cols: [7, 10, 11, 11, 9, 13, 10, 10, 13, 13, 16],
+      colStyle: [S.none, S.int, S.d3, S.d3, S.int, S.t, S.d3, S.d3, S.int, S.t, S.d3] });
+    return MEMS.writeXlsx(sheets);
+  }
+
+  $("#ov-xlsx").addEventListener("click", async () => {
+    const btn = $("#ov-xlsx");
+    btn.disabled = true; const label = btn.textContent; btn.textContent = "계산 중…";
+    try {
+      const ov = overlaps();
+      const blob = new Blob([await buildOverlapWorkbook(ov, sim)], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const counts = ov.sources.map((s) => `${s.name.split(" ")[0]} ${s.ta.length}개`).join(", ");
+      await download(blob, `overlap_${stamp()}.xlsx`, `자기 교차점 ${counts}을 엑셀로 저장했습니다.`);
+    } catch (e) {
+      say(`<p class="msg err">${e.message || e}</p>`);
+    } finally {
+      btn.disabled = false; btn.textContent = label;
+    }
+  });
+  const stamp = () => { const d = new Date(), z = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}`; };
+  $("#res-xlsx").addEventListener("click", async () => {
+    const btn = $("#res-xlsx");
+    if (!sim) { say(`<p class="msg err">광원 배치를 먼저 바로잡아 주세요.</p>`); return; }
+    btn.disabled = true; const label = btn.textContent; btn.textContent = "엑셀 만드는 중…";
+    await new Promise((r) => setTimeout(r, 30));
+    try {
+      const d = new Date(), z = (n) => String(n).padStart(2, "0");
+      const bytes = await MEMS.resultsXlsx(sim, sum, geo, { stamp: `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}` });
+      const blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      await download(blob, `scan_result_${stamp()}.xlsx`, `결과 ${sim.N.toLocaleString()}행 × ${sim.sources.length} 광원을 엑셀로 저장했습니다.`);
+    } catch (e) {
+      say(`<p class="msg err">엑셀을 만들지 못했습니다. ${e.message || e}</p>`);
+    } finally {
+      btn.disabled = false; btn.textContent = label;
+    }
+  });
+  $("#csv-copy").addEventListener("click", () => copyText(MEMS.csvText(sim), "CSV"));
+  $("#xyz-copy").addEventListener("click", () => { const k = +$("#xyz-src").value; copyText(MEMS.xyzText(sim, k), `LD${k + 1} XYZ 좌표`); });
+  $("#csv-dl").addEventListener("click", () => download(MEMS.csvText(sim), `scan_${stamp()}.csv`));
+  $("#xyz-dl").addEventListener("click", () => { const k = +$("#xyz-src").value; download(MEMS.xyzText(sim, k), `scan_${stamp()}_LD${k + 1}.txt`); });
+
+  /* ---------- boot ---------- */
+  syncInputs(); initSourceLists(); recompute();
+  let rz = null;
+  window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { draw2D(); draw3D(); }, 120); });
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => { draw2D(); draw3D(); });
+  new MutationObserver(() => { draw2D(); draw3D(); }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+})();
+</script>
+</body>
+</html>
